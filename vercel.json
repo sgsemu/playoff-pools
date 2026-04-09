@@ -1,9 +1,14 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/index.py", "use": "@vercel/python" }
+    { "src": "api/index.py", "use": "@vercel/python" },
+    { "src": "api/cron/sync_games.py", "use": "@vercel/python" }
   ],
   "routes": [
+    { "src": "/api/cron/sync-games", "dest": "api/cron/sync_games.py" },
     { "src": "/(.*)", "dest": "api/index.py" }
+  ],
+  "crons": [
+    { "path": "/api/cron/sync-games", "schedule": "*/5 * * * *" }
   ]
 }

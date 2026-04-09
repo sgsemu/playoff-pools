@@ -149,6 +149,17 @@ CREATE TABLE pool_standings (
 
 CREATE INDEX idx_pool_standings_pool ON pool_standings(pool_id);
 
+-- RPC functions for atomic increments
+CREATE OR REPLACE FUNCTION increment_wins(team_id INT)
+RETURNS VOID AS $$
+    UPDATE nba_teams SET playoff_wins = playoff_wins + 1 WHERE id = team_id;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION increment_losses(team_id INT)
+RETURNS VOID AS $$
+    UPDATE nba_teams SET playoff_losses = playoff_losses + 1 WHERE id = team_id;
+$$ LANGUAGE SQL;
+
 -- Enable Supabase Realtime on tables that need it
 ALTER PUBLICATION supabase_realtime ADD TABLE draft_picks;
 ALTER PUBLICATION supabase_realtime ADD TABLE auction_bids;
