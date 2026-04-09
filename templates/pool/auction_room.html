@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Auction Room - {{ pool.name }}{% endblock %}
+{% block content %}
+<div class="auction-room">
+    <div class="draft-header">
+        <h1>{{ pool.name }} — Auction</h1>
+        <span class="badge badge-{{ pool.draft_status }}">{{ pool.draft_status }}</span>
+        {% if pool.auction_config.auction_style == 'calcutta' %}
+            <span class="badge" style="background:#3d1f3d;color:#e879f9;">Calcutta</span>
+        {% endif %}
+    </div>
+
+    {% if pool.draft_status == 'pending' and pool.creator_id == session.get('user_id') %}
+    <button class="btn btn-primary" onclick="startDraft()">Start Auction</button>
+    {% elif pool.draft_status == 'pending' %}
+    <div class="empty-state"><p>Waiting for the pool creator to start the auction...</p></div>
+    {% endif %}
+
+    {% if pool.draft_status == 'active' %}
+    <!-- Current team up for bidding -->
+    <div class="auction-current" id="current-team">
+        <h2>Current Team</h2>
+        <div class="current-team-card" id="current-team-display">
+            <p class="empty-state">Select a team to start bidding</p>
+        </div>
+    </div>
+
+    <!-- Bid controls -->
+    <div class="bid-controls" id="bid-controls">
+        <div class="bid-row">
+            <input type="number" id="bid-amount" placeholder="Your bid" min="1" class="bid-input">
+            <button class="btn btn-primary" onclick="placeBid()">Bid</button>
+        </div>
+        {% if pool.auction_config.auction_style == 'budget' %}
+        <div class="budget-display">
+            Budget remaining: $<span id="budget-remaining">{{ pool.auction_config.starting_budget }}</span>
+        </div>
+        {% endif %}
+        <div class="high-bid" id="high-bid">No bids yet</div>
+    </div>
+
+    <!-- Teams list -->
+    <h2 class="section-title">Teams</h2>
+    <div class="team-grid" id="auction-teams">
+        {% for team in available_teams %}
+        <button class="team-card" data-team-id="{{ team.id }}" onclick="nominateTeam({{ team.id }}, '{{ team.name }}')">
+            <div class="team-seed">#{{ team.seed or '?' }}</div>
+            <div class="team-name">{{ team.abbreviation }}</div>
+        </button>
+        {% endfor %}
+    </div>
+
+    <!-- Won teams summary -->
+    <h2 class="section-title">Results</h2>
+    <div class="auction-results" id="auction-results"></div>
+    {% endif %}
+</div>
+
+<a href="/pool/{{ pool.id }}" class="btn btn-secondary" style="margin-top:16px;">Back to Pool</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const POOL_ID = "{{ pool.id }}";
+    const SUPABASE_URL = "{{ config.SUPABASE_URL }}";
+    const SUPABASE_KEY = "{{ config.SUPABASE_KEY }}";
+    const IS_CREATOR = {{ 'true' if pool.creator_id == session.get('user_id') else 'false' }};
+</script>
+<script src="/static/js/auction.js"></script>
+{% endblock %}
