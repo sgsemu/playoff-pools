@@ -7,10 +7,12 @@ def create_app():
     from routes.auth import auth_bp
     from routes.pools import pools_bp
     from routes.scores import scores_bp
+    from routes.draft import draft_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(pools_bp)
     app.register_blueprint(scores_bp)
+    app.register_blueprint(draft_bp)
 
     return app
 
