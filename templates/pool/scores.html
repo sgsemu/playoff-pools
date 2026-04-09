@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Scores - Playoff Pools{% endblock %}
+{% block content %}
+<h1>Game Results</h1>
+<div class="empty-state">
+    <p>No game results yet. Scores will appear here once playoff games are played.</p>
+</div>
+<a href="/pool/{{ pool_id }}" class="btn btn-secondary">Back to Pool</a>
+{% endblock %}

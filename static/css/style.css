@@ -33,6 +33,65 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .btn-primary:hover { background: #6b5ce0; }
 .btn-secondary { background: #2a2a3e; color: #e0e0e0; }
 
+/* Dashboard */
+.dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.dashboard-header h1 { font-size: 24px; }
+.dashboard-header .btn { padding: 8px 16px; font-size: 14px; width: auto; }
+.section-title { font-size: 16px; color: #888; margin: 24px 0 12px; text-transform: uppercase; letter-spacing: 1px; }
+.pool-list { display: grid; gap: 12px; }
+.pool-card { display: block; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 8px; padding: 16px; text-decoration: none; color: #e0e0e0; }
+.pool-card:hover { border-color: #7c6ef0; }
+.pool-card h3 { font-size: 18px; margin: 4px 0 8px; }
+.pool-card-type { font-size: 12px; color: #7c6ef0; text-transform: uppercase; letter-spacing: 1px; }
+.pool-card-meta { display: flex; gap: 12px; font-size: 13px; color: #888; }
+.pool-card-past { opacity: 0.6; }
+.empty-state { text-align: center; padding: 40px 16px; color: #666; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.badge-pending { background: #3d3d1f; color: #facc15; }
+.badge-active { background: #1f3d1f; color: #4ade80; }
+.badge-complete { background: #1f2d3d; color: #60a5fa; }
+.badge-creator { background: #2d1f3d; color: #c084fc; }
+
+/* Pool home */
+.pool-header { margin-bottom: 16px; }
+.pool-header h1 { font-size: 24px; margin-bottom: 8px; }
+.pool-meta { display: flex; gap: 12px; font-size: 14px; color: #888; flex-wrap: wrap; }
+.invite-box { background: #1a1a2e; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+.invite-box label { font-size: 12px; color: #888; display: block; margin-bottom: 4px; }
+.invite-link-row { display: flex; gap: 8px; }
+.invite-link-row input { flex: 1; padding: 8px; background: #0f0f1a; border: 1px solid #2a2a3e; border-radius: 4px; color: #e0e0e0; font-size: 13px; }
+.invite-link-row .btn { padding: 8px 12px; font-size: 13px; width: auto; }
+.pool-actions { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+.pool-actions .btn { flex: 1; min-width: 140px; padding: 12px; font-size: 14px; width: auto; }
+
+/* Standings */
+.standings-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.standings-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.standings-table th { text-align: left; padding: 8px 12px; color: #888; border-bottom: 1px solid #2a2a3e; font-size: 12px; text-transform: uppercase; }
+.standings-table td { padding: 10px 12px; border-bottom: 1px solid #1a1a2e; }
+.payout-row { background: rgba(124, 110, 240, 0.1); }
+.payout-row td:first-child { color: #7c6ef0; font-weight: 700; }
+
+/* Members */
+.member-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #1a1a2e; font-size: 14px; }
+
+/* Create pool wizard */
+.create-form { max-width: 500px; margin: 0 auto; }
+.create-form h1 { margin-bottom: 24px; }
+.hidden { display: none !important; }
+.type-options { display: grid; gap: 8px; }
+.type-option { cursor: pointer; }
+.type-option input { display: none; }
+.type-card { background: #1a1a2e; border: 2px solid #2a2a3e; border-radius: 8px; padding: 14px; }
+.type-option input:checked + .type-card { border-color: #7c6ef0; }
+.type-card strong { display: block; margin-bottom: 4px; }
+.type-card p { font-size: 13px; color: #888; }
+.create-form select { width: 100%; padding: 10px 12px; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 6px; color: #e0e0e0; font-size: 16px; }
+.create-form .btn { margin-top: 8px; }
+.create-form .btn-secondary { margin-right: 8px; }
+
 /* Responsive */
 @media (min-width: 768px) {
     .container { padding: 32px 24px; }

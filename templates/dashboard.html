@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}My Pools - Playoff Pools{% endblock %}
+{% block content %}
+<div class="dashboard">
+    <div class="dashboard-header">
+        <h1>My Pools</h1>
+        <a href="/pool/create" class="btn btn-primary">+ Create Pool</a>
+    </div>
+
+    {% if active_pools %}
+    <h2 class="section-title">Active</h2>
+    <div class="pool-list">
+        {% for pool in active_pools %}
+        <a href="/pool/{{ pool.id }}" class="pool-card">
+            <div class="pool-card-type">{{ pool.type | replace('_', ' ') | title }}</div>
+            <h3>{{ pool.name }}</h3>
+            <div class="pool-card-meta">
+                <span class="badge badge-{{ pool.draft_status }}">{{ pool.draft_status }}</span>
+                <span>{{ pool.league | upper }}</span>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if past_pools %}
+    <h2 class="section-title">Past</h2>
+    <div class="pool-list">
+        {% for pool in past_pools %}
+        <a href="/pool/{{ pool.id }}" class="pool-card pool-card-past">
+            <h3>{{ pool.name }}</h3>
+            <div class="pool-card-meta">{{ pool.type | replace('_', ' ') | title }}</div>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not active_pools and not past_pools %}
+    <div class="empty-state">
+        <p>No pools yet. Create one or join with an invite link!</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ pool.name }} - Playoff Pools{% endblock %}
+{% block content %}
+<div class="pool-home">
+    <div class="pool-header">
+        <h1>{{ pool.name }}</h1>
+        <div class="pool-meta">
+            <span class="badge badge-{{ pool.draft_status }}">{{ pool.draft_status }}</span>
+            <span>{{ pool.type | replace('_', ' ') | title }}</span>
+            {% if pool.buy_in %}<span>Buy-in: {{ pool.buy_in }}</span>{% endif %}
+        </div>
+    </div>
+
+    <!-- Invite link (creator only) -->
+    {% if pool.creator_id == session.get('user_id') %}
+    <div class="invite-box">
+        <label>Invite Link</label>
+        <div class="invite-link-row">
+            <input type="text" value="{{ config.APP_URL }}/join/{{ pool.invite_code }}" readonly id="invite-link">
+            <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('invite-link').value)">Copy</button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Action buttons -->
+    <div class="pool-actions">
+        {% if pool.type in ('draft', 'auction') and pool.draft_status != 'complete' %}
+            <a href="/pool/{{ pool.id }}/draft" class="btn btn-primary">
+                {% if pool.type == 'draft' %}Enter Draft Room{% else %}Enter Auction Room{% endif %}
+            </a>
+        {% elif pool.type == 'salary_cap' and pool.draft_status != 'complete' %}
+            <a href="/pool/{{ pool.id }}/roster" class="btn btn-primary">Pick Your Roster</a>
+        {% endif %}
+        <a href="/pool/{{ pool.id }}/scores" class="btn btn-secondary">Game Results</a>
+    </div>
+
+    <!-- Standings -->
+    <h2 class="section-title">Standings</h2>
+    {% if standings %}
+    <div class="standings-table-wrapper">
+        <table class="standings-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Player</th>
+                    <th>Points</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in standings %}
+                <tr class="{% if s.rank <= 2 %}payout-row{% endif %}">
+                    <td>{{ s.rank }}</td>
+                    <td>
+                        {% for m in members if m.id == s.member_id %}
+                            {{ m.users.display_name }}
+                        {% endfor %}
+                    </td>
+                    <td>{{ s.total_points }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No standings yet. Standings will appear once games start and scoring is calculated.</p>
+    </div>
+    {% endif %}
+
+    <!-- Members -->
+    <h2 class="section-title">Members ({{ members | length }})</h2>
+    <div class="members-list">
+        {% for m in members %}
+        <div class="member-row">
+            <span>{{ m.users.display_name }}</span>
+            {% if m.role == 'creator' %}<span class="badge badge-creator">Creator</span>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

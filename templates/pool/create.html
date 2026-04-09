@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Create Pool - Playoff Pools{% endblock %}
+{% block content %}
+<div class="create-form">
+    <h1>Create a Pool</h1>
+    <form method="POST" id="create-pool-form">
+        <!-- Step 1: Basics -->
+        <div class="wizard-step" id="step-1">
+            <div class="form-group">
+                <label for="name">Pool Name</label>
+                <input type="text" id="name" name="name" required placeholder="e.g. Friends NBA Playoffs 2026">
+            </div>
+            <div class="form-group">
+                <label>Pool Type</label>
+                <div class="type-options">
+                    <label class="type-option">
+                        <input type="radio" name="type" value="draft" checked>
+                        <div class="type-card">
+                            <strong>Team Draft</strong>
+                            <p>Snake draft NBA playoff teams</p>
+                        </div>
+                    </label>
+                    <label class="type-option">
+                        <input type="radio" name="type" value="auction">
+                        <div class="type-card">
+                            <strong>Team Auction</strong>
+                            <p>Bid on NBA playoff teams</p>
+                        </div>
+                    </label>
+                    <label class="type-option">
+                        <input type="radio" name="type" value="salary_cap">
+                        <div class="type-card">
+                            <strong>Salary Cap</strong>
+                            <p>Draft a starting 5 under a cap</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="nextStep(2)">Next</button>
+        </div>
+
+        <!-- Step 2: Rules -->
+        <div class="wizard-step hidden" id="step-2">
+            <!-- Draft/Auction options -->
+            <div id="draft-auction-options">
+                <div class="form-group">
+                    <label>Mode</label>
+                    <select name="draft_mode">
+                        <option value="live">Live (everyone online at once)</option>
+                        <option value="async">Async (pick on your own time)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="timer_seconds">Timer (seconds per pick/bid)</label>
+                    <input type="number" id="timer_seconds" name="timer_seconds" value="60" min="10" max="600">
+                </div>
+                <div class="form-group">
+                    <label>Scoring</label>
+                    <select name="scoring_type" id="scoring-type">
+                        <option value="per_win">Points per win</option>
+                        <option value="per_round">Points per series (by round)</option>
+                        <option value="combo">Points per win + round bonus</option>
+                    </select>
+                </div>
+                <div class="form-group" id="ppw-group">
+                    <label for="points_per_win">Points per win</label>
+                    <input type="number" id="points_per_win" name="points_per_win" value="1" min="1">
+                </div>
+                <div id="round-points" class="hidden">
+                    <div class="form-group"><label>Round 1 points</label><input type="number" name="round_1_points" value="2"></div>
+                    <div class="form-group"><label>Conf Semis points</label><input type="number" name="round_2_points" value="4"></div>
+                    <div class="form-group"><label>Conf Finals points</label><input type="number" name="round_3_points" value="6"></div>
+                    <div class="form-group"><label>Finals points</label><input type="number" name="round_4_points" value="10"></div>
+                </div>
+            </div>
+
+            <!-- Auction-specific -->
+            <div id="auction-options" class="hidden">
+                <div class="form-group">
+                    <label>Auction Style</label>
+                    <select name="auction_style" id="auction-style">
+                        <option value="budget">Budget (fixed fake money)</option>
+                        <option value="calcutta">Calcutta (no budget limit)</option>
+                    </select>
+                </div>
+                <div class="form-group" id="budget-group">
+                    <label for="starting_budget">Starting Budget</label>
+                    <input type="number" id="starting_budget" name="starting_budget" value="100" min="1">
+                </div>
+            </div>
+
+            <!-- Salary cap specific -->
+            <div id="salary-cap-options" class="hidden">
+                <div class="form-group">
+                    <label for="salary_cap">Salary Cap ($)</label>
+                    <input type="number" id="salary_cap" name="salary_cap" value="50000" min="10000" step="5000">
+                </div>
+                <div class="form-group">
+                    <label>Stat Scoring</label>
+                    <div class="form-group"><label>Points multiplier</label><input type="number" name="stat_points_mult" value="1" step="0.1"></div>
+                    <div class="form-group"><label>Rebounds multiplier</label><input type="number" name="stat_rebounds_mult" value="0" step="0.1"></div>
+                    <div class="form-group"><label>Assists multiplier</label><input type="number" name="stat_assists_mult" value="0" step="0.1"></div>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-secondary" onclick="nextStep(1)">Back</button>
+            <button type="button" class="btn btn-primary" onclick="nextStep(3)">Next</button>
+        </div>
+
+        <!-- Step 3: Money & Payout -->
+        <div class="wizard-step hidden" id="step-3">
+            <div class="form-group">
+                <label for="buy_in">Buy-in (display only)</label>
+                <input type="text" id="buy_in" name="buy_in" placeholder="e.g. $50">
+            </div>
+            <div class="form-group">
+                <label for="payout_description">Payout Description</label>
+                <input type="text" id="payout_description" name="payout_description" placeholder="e.g. 1st: 70%, 2nd: 30%">
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="nextStep(2)">Back</button>
+            <button type="submit" class="btn btn-primary">Create Pool</button>
+        </div>
+    </form>
+</div>
+
+<script>
+function nextStep(step) {
+    document.querySelectorAll('.wizard-step').forEach(s => s.classList.add('hidden'));
+    document.getElementById('step-' + step).classList.remove('hidden');
+}
+
+const typeRadios = document.querySelectorAll('input[name="type"]');
+typeRadios.forEach(r => r.addEventListener('change', function() {
+    const t = this.value;
+    document.getElementById('draft-auction-options').classList.toggle('hidden', t === 'salary_cap');
+    document.getElementById('auction-options').classList.toggle('hidden', t !== 'auction');
+    document.getElementById('salary-cap-options').classList.toggle('hidden', t !== 'salary_cap');
+}));
+
+document.getElementById('scoring-type').addEventListener('change', function() {
+    const v = this.value;
+    document.getElementById('ppw-group').classList.toggle('hidden', v === 'per_round');
+    document.getElementById('round-points').classList.toggle('hidden', v === 'per_win');
+});
+
+document.getElementById('auction-style').addEventListener('change', function() {
+    document.getElementById('budget-group').classList.toggle('hidden', this.value === 'calcutta');
+});
+</script>
+{% endblock %}
