@@ -9,12 +9,14 @@ def create_app():
     from routes.scores import scores_bp
     from routes.draft import draft_bp
     from routes.auction import auction_bp
+    from routes.roster import roster_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(pools_bp)
     app.register_blueprint(scores_bp)
     app.register_blueprint(draft_bp)
     app.register_blueprint(auction_bp)
+    app.register_blueprint(roster_bp)
 
     return app
 
