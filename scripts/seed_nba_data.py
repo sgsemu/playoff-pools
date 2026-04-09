@@ -8,9 +8,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-os.environ.setdefault("SUPABASE_URL", "http://localhost:54321")
-os.environ.setdefault("SUPABASE_KEY", "test-key")
-os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
 from services.espn_api import fetch_playoff_teams, fetch_team_roster
 from services.salary_generator import compute_salaries
