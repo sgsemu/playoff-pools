@@ -1,5 +1,6 @@
-from flask import Blueprint, render_template, request, redirect, session, flash
+from flask import Blueprint, render_template, request, redirect, session, flash, jsonify
 import bcrypt
+import traceback
 from services.supabase_client import get_service_client
 
 auth_bp = Blueprint("auth", __name__)
@@ -10,27 +11,30 @@ def register():
     if request.method == "GET":
         return render_template("auth/register.html")
 
-    email = request.form["email"].strip().lower()
-    password = request.form["password"]
-    display_name = request.form["display_name"].strip()
+    try:
+        email = request.form["email"].strip().lower()
+        password = request.form["password"]
+        display_name = request.form["display_name"].strip()
 
-    sb = get_service_client()
-    existing = sb.table("users").select("id").eq("email", email).execute().data
-    if existing:
-        flash("This email is already registered.", "error")
-        return render_template("auth/register.html"), 200
+        sb = get_service_client()
+        existing = sb.table("users").select("id").eq("email", email).execute().data
+        if existing:
+            flash("This email is already registered.", "error")
+            return render_template("auth/register.html"), 200
 
-    password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    result = sb.table("users").insert({
-        "email": email,
-        "password_hash": password_hash,
-        "display_name": display_name
-    }).execute()
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        result = sb.table("users").insert({
+            "email": email,
+            "password_hash": password_hash,
+            "display_name": display_name
+        }).execute()
 
-    user = result.data[0]
-    session["user_id"] = user["id"]
-    session["display_name"] = user["display_name"]
-    return redirect("/dashboard")
+        user = result.data[0]
+        session["user_id"] = user["id"]
+        session["display_name"] = user["display_name"]
+        return redirect("/dashboard")
+    except Exception as e:
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
