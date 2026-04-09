@@ -52,10 +52,15 @@ def _build_auction_config(form):
 def dashboard():
     sb = get_service_client()
     memberships = sb.table("pool_members").select(
-        "pool_id, role, pools(id, name, type, league, draft_status, season_year, created_at)"
+        "pool_id, role"
     ).eq("user_id", session["user_id"]).execute().data
 
-    pools = [m["pools"] | {"role": m["role"]} for m in memberships if m.get("pools")]
+    pools = []
+    for m in memberships:
+        pool_data = sb.table("pools").select("*").eq("id", m["pool_id"]).execute().data
+        if pool_data:
+            pools.append(pool_data[0] | {"role": m["role"]})
+
     active = [p for p in pools if p["draft_status"] != "complete"]
     past = [p for p in pools if p["draft_status"] == "complete"]
 
@@ -111,9 +116,15 @@ def pool_home(pool_id):
         return redirect("/dashboard")
     pool = pool[0]
 
-    members = sb.table("pool_members").select(
-        "*, users(display_name, email)"
-    ).eq("pool_id", pool_id).order("total_points", desc=True).execute().data
+    raw_members = sb.table("pool_members").select("*").eq(
+        "pool_id", pool_id
+    ).order("total_points", desc=True).execute().data
+
+    members = []
+    for m in raw_members:
+        user_data = sb.table("users").select("display_name, email").eq("id", m["user_id"]).execute().data
+        m["users"] = user_data[0] if user_data else {"display_name": "Unknown", "email": ""}
+        members.append(m)
 
     standings = sb.table("pool_standings").select("*").eq(
         "pool_id", pool_id
