@@ -1,0 +1,98 @@
+import requests
+
+ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
+
+
+def fetch_scoreboard(date=None):
+    url = f"{ESPN_BASE}/scoreboard"
+    params = {}
+    if date:
+        params["dates"] = date  # format: YYYYMMDD
+
+    resp = requests.get(url, params=params, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    games = []
+    for event in data.get("events", []):
+        comp = event["competitions"][0]
+        competitors = comp["competitors"]
+        home = next(c for c in competitors if c["homeAway"] == "home")
+        away = next(c for c in competitors if c["homeAway"] == "away")
+        is_complete = comp["status"]["type"]["completed"]
+
+        games.append({
+            "espn_game_id": event["id"],
+            "home_team_id": int(home["team"]["id"]),
+            "away_team_id": int(away["team"]["id"]),
+            "home_score": int(home["score"]) if home.get("score") else 0,
+            "away_score": int(away["score"]) if away.get("score") else 0,
+            "is_complete": is_complete,
+        })
+
+    return games
+
+
+def fetch_game_boxscore(espn_game_id):
+    url = f"{ESPN_BASE}/summary"
+    resp = requests.get(url, params={"event": espn_game_id}, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    players = []
+    for team_data in data.get("boxscore", {}).get("players", []):
+        team_id = int(team_data["team"]["id"])
+        for stat_group in team_data.get("statistics", []):
+            for athlete in stat_group.get("athletes", []):
+                stats = athlete.get("stats", [])
+                # ESPN box score stat order: PTS, REB, AST, STL, BLK, TO, MIN (varies)
+                # We'll parse by checking the labels
+                players.append({
+                    "espn_player_id": int(athlete["athlete"]["id"]),
+                    "name": athlete["athlete"]["displayName"],
+                    "team_id": team_id,
+                    "points": int(stats[0]) if len(stats) > 0 and stats[0].isdigit() else 0,
+                    "rebounds": int(stats[1]) if len(stats) > 1 and stats[1].isdigit() else 0,
+                    "assists": int(stats[2]) if len(stats) > 2 and stats[2].isdigit() else 0,
+                })
+
+    return players
+
+
+def fetch_playoff_teams():
+    url = f"{ESPN_BASE}/teams"
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    teams = []
+    for t in data.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", []):
+        team = t["team"]
+        # Group ID 4 = Eastern, 5 = Western (approximate -- may need verification)
+        conference = "East" if team.get("groups", {}).get("id") == "4" else "West"
+        teams.append({
+            "id": int(team["id"]),
+            "name": team["displayName"],
+            "abbreviation": team["abbreviation"],
+            "conference": conference,
+        })
+
+    return teams
+
+
+def fetch_team_roster(team_id):
+    url = f"{ESPN_BASE}/teams/{team_id}/roster"
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    players = []
+    for athlete in data.get("athletes", []):
+        players.append({
+            "id": int(athlete["id"]),
+            "name": athlete["displayName"],
+            "team_id": team_id,
+            "position": athlete.get("position", {}).get("abbreviation", ""),
+        })
+
+    return players
