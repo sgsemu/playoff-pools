@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Draft Room - {{ pool.name }}{% endblock %}
+{% block content %}
+<div class="draft-room">
+    <div class="draft-header">
+        <h1>{{ pool.name }} — Draft</h1>
+        <span class="badge badge-{{ pool.draft_status }}">{{ pool.draft_status }}</span>
+    </div>
+
+    {% if pool.draft_status == 'pending' and pool.creator_id == session.get('user_id') %}
+    <button class="btn btn-primary" id="start-draft-btn" onclick="startDraft()">Start Draft</button>
+    {% elif pool.draft_status == 'pending' %}
+    <div class="empty-state"><p>Waiting for the pool creator to start the draft...</p></div>
+    {% endif %}
+
+    {% if pool.draft_status == 'active' %}
+    <!-- Current turn indicator -->
+    <div class="turn-indicator" id="turn-indicator">
+        {% if current_turn %}
+            {% for m in members if m.id == current_turn[0] %}
+                <span class="turn-name">{{ m.users.display_name }}'s pick</span>
+                <span class="turn-round">Round {{ current_turn[1] }}</span>
+            {% endfor %}
+        {% else %}
+            <span>Draft complete!</span>
+        {% endif %}
+    </div>
+
+    <!-- Available teams -->
+    <h2 class="section-title">Available Teams</h2>
+    <div class="team-grid" id="available-teams">
+        {% for team in available_teams %}
+        <button class="team-card" data-team-id="{{ team.id }}" onclick="pickTeam({{ team.id }}, '{{ team.name }}')">
+            <div class="team-seed">#{{ team.seed or '?' }}</div>
+            <div class="team-name">{{ team.abbreviation }}</div>
+            <div class="team-full">{{ team.name }}</div>
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Draft log -->
+    <h2 class="section-title">Draft Log</h2>
+    <div class="draft-log" id="draft-log">
+        {% for pick in picks %}
+        <div class="pick-entry">
+            <span class="pick-num">#{{ pick.pick_order }}</span>
+            <span class="pick-round">R{{ pick.round }}</span>
+            {% for m in members if m.id == pick.member_id %}
+                <span class="pick-member">{{ m.users.display_name }}</span>
+            {% endfor %}
+            <span class="pick-team">Team {{ pick.nba_team_id }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<a href="/pool/{{ pool.id }}" class="btn btn-secondary" style="margin-top:16px;">Back to Pool</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const POOL_ID = "{{ pool.id }}";
+    const SUPABASE_URL = "{{ config.SUPABASE_URL }}";
+    const SUPABASE_KEY = "{{ config.SUPABASE_KEY }}";
+</script>
+<script src="/static/js/draft.js"></script>
+{% endblock %}
