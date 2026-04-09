@@ -23,9 +23,15 @@ def roster_page(pool_id):
         return "Not a member", 403
     member = member[0]
 
-    roster = sb.table("salary_rosters").select(
-        "*, nba_players(name, position, salary_value)"
-    ).eq("pool_id", pool_id).eq("member_id", member["id"]).execute().data
+    raw_roster = sb.table("salary_rosters").select("*").eq(
+        "pool_id", pool_id
+    ).eq("member_id", member["id"]).execute().data
+
+    roster = []
+    for r in raw_roster:
+        player = sb.table("nba_players").select("name, position, salary_value").eq("id", r["nba_player_id"]).execute().data
+        r["nba_players"] = player[0] if player else {"name": "Unknown", "position": "", "salary_value": 0}
+        roster.append(r)
 
     players = sb.table("nba_players").select("*").order("salary_value", desc=True).execute().data
 

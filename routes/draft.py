@@ -26,9 +26,14 @@ def draft_room(pool_id):
         return "Pool not found", 404
     pool = pool[0]
 
-    members = sb.table("pool_members").select(
-        "*, users(display_name)"
-    ).eq("pool_id", pool_id).order("joined_at").execute().data
+    raw_members = sb.table("pool_members").select("*").eq(
+        "pool_id", pool_id
+    ).order("joined_at").execute().data
+    members = []
+    for m in raw_members:
+        user = sb.table("users").select("display_name").eq("id", m["user_id"]).execute().data
+        m["users"] = user[0] if user else {"display_name": "Unknown"}
+        members.append(m)
 
     picks = sb.table("draft_picks").select("*").eq(
         "pool_id", pool_id

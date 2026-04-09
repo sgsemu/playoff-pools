@@ -27,10 +27,13 @@ def game_scores(pool_id):
         "pool_id", pool_id
     ).order("rank").execute().data
 
-    members = sb.table("pool_members").select(
-        "*, users(display_name)"
-    ).eq("pool_id", pool_id).execute().data
-    member_map = {m["id"]: m for m in members}
+    raw_members = sb.table("pool_members").select("*").eq(
+        "pool_id", pool_id
+    ).execute().data
+    for m in raw_members:
+        user = sb.table("users").select("display_name").eq("id", m["user_id"]).execute().data
+        m["users"] = user[0] if user else {"display_name": "Unknown"}
+    member_map = {m["id"]: m for m in raw_members}
 
     return render_template("pool/scores.html",
         pool=pool, games=games, standings=standings, member_map=member_map)
