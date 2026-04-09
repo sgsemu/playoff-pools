@@ -6,6 +6,13 @@ from services.supabase_client import get_service_client
 pools_bp = Blueprint("pools", __name__)
 
 
+@pools_bp.route("/")
+def landing():
+    if session.get("user_id"):
+        return redirect("/dashboard")
+    return render_template("landing.html")
+
+
 def _build_scoring_config(form):
     scoring_type = form.get("scoring_type", "per_win")
     config = {"type": scoring_type}

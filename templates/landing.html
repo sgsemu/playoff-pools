@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Playoff Pools — NBA Playoff Pools With Friends{% endblock %}
+{% block content %}
+<div class="landing">
+    <div class="hero">
+        <h1>NBA Playoff Pools<br>With Your Friends</h1>
+        <p class="hero-sub">Draft teams. Bid in auctions. Build salary cap rosters. Track live scores. All free.</p>
+        <div class="hero-ctas">
+            <a href="/register" class="btn btn-primary">Get Started</a>
+            <a href="/login" class="btn btn-secondary">Login</a>
+        </div>
+    </div>
+
+    <div class="features">
+        <div class="feature-card">
+            <h3>Team Draft</h3>
+            <p>Snake draft NBA playoff teams. Live or async — your choice.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Team Auction</h3>
+            <p>Bid on teams with a budget or go Calcutta-style with no limits.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Salary Cap</h3>
+            <p>Build a starting 5 under a salary cap. Scored on real player stats.</p>
+        </div>
+    </div>
+
+    <div class="how-it-works">
+        <h2>How It Works</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <h3>Create a Pool</h3>
+                <p>Pick your pool type and set the rules.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <h3>Invite Friends</h3>
+                <p>Share the invite link. No app download needed.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <h3>Draft & Compete</h3>
+                <p>Draft your teams or players, then watch the playoffs unfold.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
