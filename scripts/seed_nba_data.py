@@ -22,26 +22,27 @@ PLAYOFF_TEAM_IDS = None  # Set to None to seed all teams, or a list of IDs to fi
 
 
 def fetch_player_ppg(player_id):
-    """Fetch a player's PPG from ESPN."""
+    """Fetch a player's current season PPG from ESPN."""
     try:
-        url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/players/{player_id}/statistics"
+        url = f"https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/{player_id}/stats"
         resp = requests.get(url, timeout=10)
         if resp.status_code != 200:
             return 0.0
         data = resp.json()
-        # Look through stat categories for points per game
-        for cat in data.get("statistics", []):
-            for split in cat.get("splits", []):
-                stats = split.get("stats", {})
-                if isinstance(stats, dict) and "avgPoints" in stats:
-                    return float(stats["avgPoints"])
-                # Sometimes it's a list
-                if isinstance(stats, list) and len(stats) > 0:
-                    # PPG is often the first stat
-                    try:
-                        return float(stats[0])
-                    except (ValueError, TypeError):
-                        pass
+        for cat in data.get("categories", []):
+            if cat.get("name") == "averages":
+                labels = cat.get("labels", [])
+                if "PTS" not in labels:
+                    continue
+                pts_idx = labels.index("PTS")
+                # Get the most recent season stats
+                stats_list = cat.get("statistics", [])
+                if stats_list:
+                    last_season = stats_list[-1]
+                    vals = last_season.get("stats", [])
+                    if len(vals) > pts_idx:
+                        return float(vals[pts_idx])
+                break
         return 0.0
     except Exception:
         return 0.0
