@@ -2,7 +2,9 @@ from flask import Flask
 
 def create_app():
     app = Flask(__name__)
-    app.secret_key = __import__("config").SECRET_KEY
+    import config
+    app.secret_key = config.SECRET_KEY
+    app.config["APP_URL"] = config.APP_URL
 
     from routes.auth import auth_bp
     from routes.pools import pools_bp
