@@ -85,9 +85,9 @@ CREATE TABLE salary_rosters (
     member_id UUID NOT NULL REFERENCES pool_members(id),
     nba_player_id INT NOT NULL,
     salary NUMERIC NOT NULL,
-    position TEXT NOT NULL CHECK (position IN ('PG', 'SG', 'SF', 'PF', 'C')),
+    position TEXT NOT NULL DEFAULT '',
     total_points NUMERIC NOT NULL DEFAULT 0,
-    UNIQUE(pool_id, member_id, position)
+    UNIQUE(pool_id, member_id, nba_player_id)
 );
 
 CREATE INDEX idx_salary_rosters_pool ON salary_rosters(pool_id);

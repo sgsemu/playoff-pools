@@ -96,3 +96,25 @@ def fetch_team_roster(team_id):
         })
 
     return players
+
+
+def fetch_player_stats(player_id):
+    """Fetch a player's season averages from ESPN."""
+    url = f"{ESPN_BASE}/players/{player_id}"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        # Look for season stats in the statistics section
+        for cat in data.get("statistics", []):
+            splits = cat.get("splits", [])
+            if splits:
+                stats = splits[0].get("stats", [])
+                # ESPN player stats vary, but PPG is typically available
+                # Return the raw stats dict for parsing
+                return {
+                    "ppg": float(stats[0]) if stats else 0.0,
+                }
+    except Exception:
+        pass
+    return {"ppg": 0.0}

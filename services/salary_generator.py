@@ -1,9 +1,10 @@
 def compute_salaries(players, cap=50000):
     """
-    Compute salary values for NBA players based on regular season stats.
+    Compute salary values for NBA players based on PPG.
+    Higher PPG = higher salary.
 
     Args:
-        players: list of dicts with keys: id, name, ppg, rpg, apg
+        players: list of dicts with keys: id, name, ppg
         cap: the salary cap amount (default $50,000)
 
     Returns:
@@ -12,22 +13,21 @@ def compute_salaries(players, cap=50000):
     if not players:
         return {}
 
-    # Composite score: weighted sum of stats
-    composites = []
-    for p in players:
-        score = p["ppg"] * 1.0 + p["rpg"] * 0.7 + p["apg"] * 0.8
-        composites.append((p["id"], score))
+    # Sort by PPG descending
+    sorted_players = sorted(players, key=lambda p: p.get("ppg", 0), reverse=True)
 
-    composites.sort(key=lambda x: x[1], reverse=True)
+    max_ppg = sorted_players[0].get("ppg", 1) if sorted_players else 1
+    if max_ppg == 0:
+        max_ppg = 1
 
-    max_score = composites[0][1] if composites else 1
-    min_salary = cap * 0.01  # Floor: 1% of cap ($500 at $50K cap)
-    max_salary = cap * 0.20  # Ceiling: 20% of cap ($10K at $50K cap)
+    min_salary = cap * 0.01   # Floor: 1% of cap ($500 at $50K cap)
+    max_salary = cap * 0.20   # Ceiling: 20% of cap ($10K at $50K cap)
 
     salaries = {}
-    for player_id, score in composites:
-        ratio = score / max_score if max_score > 0 else 0
+    for p in sorted_players:
+        ppg = p.get("ppg", 0)
+        ratio = ppg / max_ppg
         salary = min_salary + (max_salary - min_salary) * ratio
-        salaries[player_id] = round(salary)
+        salaries[p["id"]] = round(salary)
 
     return salaries

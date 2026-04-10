@@ -4,7 +4,7 @@ from services.supabase_client import get_service_client
 
 roster_bp = Blueprint("roster", __name__)
 
-VALID_POSITIONS = ["PG", "SG", "SF", "PF", "C"]
+MAX_ROSTER_SIZE = 5
 
 
 @roster_bp.route("/pool/<pool_id>/roster")
@@ -27,23 +27,42 @@ def roster_page(pool_id):
         "pool_id", pool_id
     ).eq("member_id", member["id"]).execute().data
 
+    # Look up player + team info for each roster entry
     roster = []
     for r in raw_roster:
-        player = sb.table("nba_players").select("name, position, salary_value").eq("id", r["nba_player_id"]).execute().data
-        r["nba_players"] = player[0] if player else {"name": "Unknown", "position": "", "salary_value": 0}
+        player = sb.table("nba_players").select("name, team_id, salary_value").eq("id", r["nba_player_id"]).execute().data
+        if player:
+            team = sb.table("nba_teams").select("name, abbreviation").eq("id", player[0]["team_id"]).execute().data
+            r["player_name"] = player[0]["name"]
+            r["team_name"] = team[0]["abbreviation"] if team else "?"
+            r["salary_value"] = player[0]["salary_value"]
+        else:
+            r["player_name"] = "Unknown"
+            r["team_name"] = "?"
+            r["salary_value"] = 0
         roster.append(r)
 
-    players = sb.table("nba_players").select("*").order("salary_value", desc=True).execute().data
+    # Get all players with their team info for the picker
+    all_players = sb.table("nba_players").select("*").order("salary_value", desc=True).execute().data
+    teams_map = {}
+    for t in sb.table("nba_teams").select("id, name, abbreviation").execute().data:
+        teams_map[t["id"]] = t
+
+    for p in all_players:
+        team = teams_map.get(p["team_id"], {})
+        p["team_name"] = team.get("name", "")
+        p["team_abbr"] = team.get("abbreviation", "")
 
     salary_cap = pool["scoring_config"].get("salary_cap", 50000)
-    spent = sum(r["salary"] for r in roster)
+    spent = sum(r["salary"] for r in raw_roster)
     remaining = salary_cap - spent
-    filled_positions = [r["position"] for r in roster]
+    roster_full = len(roster) >= MAX_ROSTER_SIZE
 
     return render_template("pool/roster.html",
-        pool=pool, roster=roster, players=players,
+        pool=pool, roster=roster, players=all_players,
         salary_cap=salary_cap, spent=spent, remaining=remaining,
-        filled_positions=filled_positions)
+        roster_full=roster_full, roster_count=len(roster),
+        max_roster=MAX_ROSTER_SIZE)
 
 
 @roster_bp.route("/pool/<pool_id>/roster/pick", methods=["POST"])
@@ -65,19 +84,18 @@ def pick_player(pool_id):
 
     data = request.get_json()
     nba_player_id = data["nba_player_id"]
-    position = data["position"]
 
-    if position not in VALID_POSITIONS:
-        return jsonify({"error": f"Invalid position: {position}"}), 400
-
-    # Check position not already filled
+    # Check roster not already full
     roster = sb.table("salary_rosters").select("*").eq(
         "pool_id", pool_id
     ).eq("member_id", member["id"]).execute().data
 
-    filled = [r["position"] for r in roster]
-    if position in filled:
-        return jsonify({"error": f"Position {position} already filled"}), 400
+    if len(roster) >= MAX_ROSTER_SIZE:
+        return jsonify({"error": f"Roster full ({MAX_ROSTER_SIZE} players max)"}), 400
+
+    # Check player not already on roster
+    if any(r["nba_player_id"] == nba_player_id for r in roster):
+        return jsonify({"error": "Player already on your roster"}), 400
 
     # Get player salary
     player = sb.table("nba_players").select("*").eq("id", nba_player_id).execute().data
@@ -90,7 +108,7 @@ def pick_player(pool_id):
     spent = sum(r["salary"] for r in roster)
     if spent + player["salary_value"] > salary_cap:
         return jsonify({
-            "error": f"Over salary cap. Spent: ${spent}, Player: ${player['salary_value']}, Cap: ${salary_cap}"
+            "error": f"Over salary cap. Spent: ${spent:,}, Player: ${player['salary_value']:,}, Cap: ${salary_cap:,}"
         }), 400
 
     sb.table("salary_rosters").insert({
@@ -98,7 +116,7 @@ def pick_player(pool_id):
         "member_id": member["id"],
         "nba_player_id": nba_player_id,
         "salary": player["salary_value"],
-        "position": position,
+        "position": player.get("position", ""),
     }).execute()
 
     return jsonify({"success": True})

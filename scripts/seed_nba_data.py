@@ -1,6 +1,6 @@
 """
 Pre-playoff data seeder: fetches NBA playoff teams and rosters from ESPN,
-generates salary values, and inserts into Supabase.
+generates salary values based on PPG, and inserts into Supabase.
 
 Usage: python scripts/seed_nba_data.py
 """
@@ -14,23 +14,54 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 from services.espn_api import fetch_playoff_teams, fetch_team_roster
 from services.salary_generator import compute_salaries
 from services.supabase_client import get_service_client
+import requests
+
+# 2026 NBA playoff team IDs — update these each year
+# These are the 16 teams that made the playoffs
+PLAYOFF_TEAM_IDS = None  # Set to None to seed all teams, or a list of IDs to filter
+
+
+def fetch_player_ppg(player_id):
+    """Fetch a player's PPG from ESPN."""
+    try:
+        url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/players/{player_id}/statistics"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            return 0.0
+        data = resp.json()
+        # Look through stat categories for points per game
+        for cat in data.get("statistics", []):
+            for split in cat.get("splits", []):
+                stats = split.get("stats", {})
+                if isinstance(stats, dict) and "avgPoints" in stats:
+                    return float(stats["avgPoints"])
+                # Sometimes it's a list
+                if isinstance(stats, list) and len(stats) > 0:
+                    # PPG is often the first stat
+                    try:
+                        return float(stats[0])
+                    except (ValueError, TypeError):
+                        pass
+        return 0.0
+    except Exception:
+        return 0.0
 
 
 def seed_teams():
-    print("Fetching playoff teams from ESPN...")
+    print("Fetching teams from ESPN...")
     teams = fetch_playoff_teams()
     sb = get_service_client()
 
-    # For MVP, we take the top 16 teams (8 per conference) as playoff teams
-    # ESPN doesn't distinguish playoff teams in the teams endpoint,
-    # so we'll seed all teams and mark playoff status manually or via standings
+    if PLAYOFF_TEAM_IDS:
+        teams = [t for t in teams if t["id"] in PLAYOFF_TEAM_IDS]
+
     for team in teams:
         sb.table("nba_teams").upsert({
             "id": team["id"],
             "name": team["name"],
             "abbreviation": team["abbreviation"],
             "conference": team["conference"],
-            "seed": None,  # Set manually or via standings endpoint
+            "seed": None,
             "is_eliminated": False,
             "playoff_wins": 0,
             "playoff_losses": 0,
@@ -44,23 +75,23 @@ def seed_players_and_salaries(teams):
     sb = get_service_client()
     all_players = []
 
-    print("Fetching rosters...")
+    print("Fetching rosters and PPG stats (this may take a few minutes)...")
     for team in teams:
+        print(f"  {team['abbreviation']}...", end=" ", flush=True)
         roster = fetch_team_roster(team["id"])
         for p in roster:
+            # Fetch each player's PPG
+            ppg = fetch_player_ppg(p["id"])
             all_players.append({
                 "id": p["id"],
                 "name": p["name"],
                 "team_id": p["team_id"],
                 "position": p["position"],
-                "ppg": 0,  # Will be populated from stats
-                "rpg": 0,
-                "apg": 0,
+                "ppg": ppg,
             })
+        print(f"{len(roster)} players")
 
-    # For salary generation, we need season stats.
-    # For now, seed players with zero stats; update via a separate stats fetch.
-    print(f"Computing salaries for {len(all_players)} players...")
+    print(f"\nComputing salaries for {len(all_players)} players based on PPG...")
     salaries = compute_salaries(all_players, cap=50000)
 
     for p in all_players:
@@ -75,7 +106,13 @@ def seed_players_and_salaries(teams):
             "playoff_assists": 0,
         }).execute()
 
-    print(f"Seeded {len(all_players)} players with salaries.")
+    # Print top 10 salaries for verification
+    top = sorted(all_players, key=lambda x: x["ppg"], reverse=True)[:10]
+    print("\nTop 10 by PPG:")
+    for p in top:
+        print(f"  {p['name']:25s} PPG: {p['ppg']:5.1f}  Salary: ${salaries.get(p['id'], 0):,}")
+
+    print(f"\nSeeded {len(all_players)} players with PPG-based salaries.")
 
 
 if __name__ == "__main__":

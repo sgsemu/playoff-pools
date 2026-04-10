@@ -1,10 +1,10 @@
 // roster.js — Salary cap roster picker
 
-async function pickPlayer(playerId, position) {
+async function pickPlayer(playerId) {
     const resp = await fetch(`/pool/${POOL_ID}/roster/pick`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nba_player_id: playerId, position: position })
+        body: JSON.stringify({ nba_player_id: playerId })
     });
 
     const data = await resp.json();
@@ -29,12 +29,12 @@ async function removePlayer(rosterId) {
 }
 
 function filterPlayers() {
-    const pos = document.getElementById("pos-filter").value;
     const search = document.getElementById("name-search").value.toLowerCase();
 
     document.querySelectorAll(".player-row").forEach(row => {
-        const matchPos = !pos || row.dataset.position === pos;
-        const matchName = !search || row.dataset.name.includes(search);
-        row.style.display = (matchPos && matchName) ? "" : "none";
+        const name = row.dataset.name || "";
+        const team = row.dataset.team || "";
+        const match = !search || name.includes(search) || team.includes(search);
+        row.style.display = match ? "" : "none";
     });
 }

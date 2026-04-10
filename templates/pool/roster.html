@@ -10,54 +10,47 @@
             <div class="cap-fill" style="width: {{ (spent / salary_cap * 100) | int }}%"></div>
         </div>
         <div class="cap-labels">
-            <span>${{ spent | int }} spent</span>
-            <span>${{ remaining | int }} remaining</span>
-            <span>Cap: ${{ salary_cap | int }}</span>
+            <span>${{ "{:,}".format(spent | int) }} spent</span>
+            <span>${{ "{:,}".format(remaining | int) }} remaining</span>
+            <span>Cap: ${{ "{:,}".format(salary_cap | int) }}</span>
         </div>
     </div>
 
     <!-- Current roster -->
-    <div class="roster-slots">
-        {% for pos in ['PG', 'SG', 'SF', 'PF', 'C'] %}
-        <div class="roster-slot {% if pos in filled_positions %}filled{% endif %}">
-            <div class="slot-position">{{ pos }}</div>
-            {% for r in roster if r.position == pos %}
-                <div class="slot-player">
-                    <span class="slot-name">{{ r.nba_players.name }}</span>
-                    <span class="slot-salary">${{ r.salary | int }}</span>
-                    <button class="slot-remove" onclick="removePlayer('{{ r.id }}')">X</button>
-                </div>
-            {% else %}
-                <div class="slot-empty">Empty</div>
-            {% endfor %}
+    <h2 class="section-title">Your Players ({{ roster_count }}/{{ max_roster }})</h2>
+    {% if roster %}
+    <div class="roster-list">
+        {% for r in roster %}
+        <div class="roster-entry">
+            <div class="roster-player-info">
+                <span class="roster-player-name">{{ r.player_name }}</span>
+                <span class="roster-player-team">{{ r.team_name }}</span>
+            </div>
+            <span class="roster-player-salary">${{ "{:,}".format(r.salary | int) }}</span>
+            <button class="slot-remove" onclick="removePlayer('{{ r.id }}')">✕</button>
         </div>
         {% endfor %}
     </div>
+    {% else %}
+    <div class="empty-state"><p>No players yet. Add up to {{ max_roster }} players below.</p></div>
+    {% endif %}
 
     <!-- Player browser -->
-    {% if filled_positions | length < 5 %}
+    {% if not roster_full %}
     <h2 class="section-title">Available Players</h2>
     <div class="player-filters">
-        <select id="pos-filter" onchange="filterPlayers()">
-            <option value="">All Positions</option>
-            {% for pos in ['PG', 'SG', 'SF', 'PF', 'C'] %}
-                {% if pos not in filled_positions %}
-                <option value="{{ pos }}">{{ pos }}</option>
-                {% endif %}
-            {% endfor %}
-        </select>
-        <input type="text" id="name-search" placeholder="Search player..." oninput="filterPlayers()">
+        <input type="text" id="name-search" placeholder="Search by name or team..." oninput="filterPlayers()">
     </div>
     <div class="player-list" id="player-list">
         {% for p in players %}
-        <div class="player-row" data-position="{{ p.position }}" data-name="{{ p.name | lower }}" data-salary="{{ p.salary_value }}">
+        <div class="player-row" data-name="{{ p.name | lower }}" data-team="{{ p.team_name | lower }} {{ p.team_abbr | lower }}">
             <div class="player-info">
                 <span class="player-name">{{ p.name }}</span>
-                <span class="player-pos">{{ p.position }}</span>
+                <span class="player-team">{{ p.team_abbr }}</span>
             </div>
-            <div class="player-salary">${{ p.salary_value | int }}</div>
+            <div class="player-salary">${{ "{:,}".format(p.salary_value | int) }}</div>
             <button class="btn btn-secondary player-add"
-                    onclick="pickPlayer({{ p.id }}, '{{ p.position }}')"
+                    onclick="pickPlayer({{ p.id }})"
                     {% if p.salary_value > remaining %}disabled{% endif %}>
                 Add
             </button>
@@ -67,7 +60,7 @@
     {% else %}
     <div class="roster-complete">
         <h2>Roster Complete!</h2>
-        <p>You've filled all 5 positions. Good luck!</p>
+        <p>You've picked {{ max_roster }} players. Good luck!</p>
     </div>
     {% endif %}
 </div>
