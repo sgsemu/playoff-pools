@@ -104,8 +104,8 @@ def recalculate_standings(pool_id):
             "member_id": member_id,
             "rank": rank,
             "total_points": total,
-            "points_breakdown": {},  # Could be enriched with per-team/player detail
-        }).execute()
+            "points_breakdown": {},
+        }, on_conflict="pool_id,member_id").execute()
 
         # Update denormalized total on pool_members
         sb.table("pool_members").update({"total_points": total}).eq(
