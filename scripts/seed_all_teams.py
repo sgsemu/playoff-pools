@@ -58,8 +58,6 @@ def seed_nba():
     teams = fetch_nba_standings(TOP_N_TEAMS)
     sb = get_service_client()
 
-    sb.table("nba_teams").delete().neq("id", 0).execute()
-
     for team in teams:
         sb.table("nba_teams").upsert({
             "id": team["id"],
@@ -81,8 +79,6 @@ def seed_nhl():
     print(f"\n=== NHL: Fetching top {TOP_N_TEAMS} teams ===")
     teams = fetch_nhl_standings(TOP_N_TEAMS)
     sb = get_service_client()
-
-    sb.table("nhl_teams").delete().neq("id", 0).execute()
 
     for team in teams:
         sb.table("nhl_teams").upsert({
