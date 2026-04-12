@@ -153,35 +153,36 @@ def fetch_nhl_scoreboard(date=None):
 
 
 def fetch_nhl_standings(n=16):
-    """Fetch current NHL season standings and return top N teams by wins."""
+    """Fetch current NHL season standings and return only clinched playoff teams."""
     url = "https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings"
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     data = resp.json()
 
-    all_teams = []
+    PLAYOFF_CLINCH = {"y", "z", "x", "*"}  # clinched playoff spot (not play-in)
+
+    playoff_teams = []
     for child in data.get("children", []):
         conf = child.get("name", "")
         for entry in child.get("standings", {}).get("entries", []):
             team = entry.get("team", {})
             stats = {s["name"]: s["displayValue"] for s in entry.get("stats", [])}
+            clinch = stats.get("clincher", "")
+            if clinch not in PLAYOFF_CLINCH:
+                continue
+            seed = int(stats.get("playoffSeed", 99))
             wl = stats.get("overall", "0-0-0").split("-")
             wins = int(wl[0])
             losses = int(wl[1]) if len(wl) > 1 else 0
-            all_teams.append({
+            playoff_teams.append({
                 "id": int(team["id"]),
                 "name": team.get("displayName", ""),
                 "abbreviation": team.get("abbreviation", ""),
                 "conference": "East" if "East" in conf else "West",
+                "seed": seed,
                 "wins": wins,
                 "losses": losses,
             })
 
-    all_teams.sort(key=lambda x: x["wins"], reverse=True)
-    top = all_teams[:n]
-
-    # Assign overall seed by rank (1-16), not per-conference
-    for i, t in enumerate(top, 1):
-        t["seed"] = i
-
-    return top
+    playoff_teams.sort(key=lambda x: (x["conference"], x["seed"]))
+    return playoff_teams[:n]
