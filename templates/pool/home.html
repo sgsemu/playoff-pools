@@ -32,7 +32,22 @@
             <a href="/pool/{{ pool.id }}/roster" class="btn btn-primary">Pick Your Roster</a>
         {% endif %}
         <a href="/pool/{{ pool.id }}/scores" class="btn btn-secondary">Game Results</a>
+        {% if pool.creator_id == session.get('user_id') %}
+        <button onclick="deletePool()" class="btn btn-secondary" style="background:#e74c3c;color:#fff;border-color:#e74c3c">Delete Pool</button>
+        {% endif %}
     </div>
+
+<script>
+function deletePool() {
+    if (!confirm("Delete this pool and all its data? This cannot be undone.")) return;
+    fetch("/api/pool/{{ pool.id }}", { method: "DELETE" })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) { window.location.href = "/dashboard"; }
+        else { alert(data.error || "Failed to delete pool"); }
+    });
+}
+</script>
 
     <!-- Standings -->
     <h2 class="section-title">Standings</h2>

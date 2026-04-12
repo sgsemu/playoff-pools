@@ -160,3 +160,25 @@ def join_pool(invite_code):
         flash(f"You're already in {pool['name']}.", "error")
 
     return redirect(f"/pool/{pool['id']}")
+
+
+@pools_bp.route("/api/pool/<pool_id>", methods=["DELETE"])
+@login_required
+def delete_pool(pool_id):
+    from flask import jsonify
+    sb = get_service_client()
+    pool = sb.table("pools").select("id, creator_id").eq("id", pool_id).execute().data
+    if not pool:
+        return jsonify({"error": "Pool not found"}), 404
+    if pool[0]["creator_id"] != session["user_id"]:
+        return jsonify({"error": "Only the creator can delete a pool"}), 403
+
+    # Delete in order: picks/bids, standings, members, then pool
+    sb.table("draft_picks").delete().eq("pool_id", pool_id).execute()
+    sb.table("auction_bids").delete().eq("pool_id", pool_id).execute()
+    sb.table("salary_rosters").delete().eq("pool_id", pool_id).execute()
+    sb.table("pool_standings").delete().eq("pool_id", pool_id).execute()
+    sb.table("pool_members").delete().eq("pool_id", pool_id).execute()
+    sb.table("pools").delete().eq("id", pool_id).execute()
+
+    return jsonify({"ok": True})
