@@ -97,14 +97,13 @@
                 <input type="text" id="payout_description" name="payout_description" placeholder="e.g. 1st: 70%, 2nd: 30%">
             </div>
             <button type="button" class="btn btn-secondary" onclick="nextStep(2)">Back</button>
-            <button type="submit" class="btn btn-primary">Create Pool</button>
+            <button type="submit" class="btn btn-primary" id="createBtn">Create Pool</button>
         </div>
     </form>
 </div>
 
 <script>
 function nextStep(step) {
-    // Validate step 1 before moving forward
     if (step > 1) {
         var name = document.getElementById('name').value.trim();
         if (!name) { alert('Please enter a pool name.'); return; }
@@ -112,6 +111,19 @@ function nextStep(step) {
     document.querySelectorAll('.wizard-step').forEach(s => s.classList.add('hidden'));
     document.getElementById('step-' + step).classList.remove('hidden');
 }
+
+document.getElementById('create-pool-form').addEventListener('submit', function(e) {
+    var name = document.getElementById('name').value.trim();
+    if (!name) {
+        e.preventDefault();
+        alert('Please enter a pool name.');
+        nextStep(1);
+        return;
+    }
+    var btn = document.getElementById('createBtn');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+});
 
 const typeRadios = document.querySelectorAll('input[name="type"]');
 typeRadios.forEach(r => r.addEventListener('change', function() {
