@@ -6,6 +6,17 @@ from services.supabase_client import get_service_client
 draft_bp = Blueprint("draft", __name__)
 
 
+def _get_all_teams(sb):
+    """Fetch both NBA and NHL teams, tagged with league."""
+    nba = sb.table("nba_teams").select("*").order("seed").execute().data
+    for t in nba:
+        t["league"] = "nba"
+    nhl = sb.table("nhl_teams").select("*").order("seed").execute().data
+    for t in nhl:
+        t["league"] = "nhl"
+    return nba + nhl
+
+
 def _get_snake_order(member_ids, num_rounds):
     """Generate snake draft order: 1-2-3...3-2-1...1-2-3..."""
     order = []
@@ -39,13 +50,21 @@ def draft_room(pool_id):
         "pool_id", pool_id
     ).order("pick_order").execute().data
 
-    teams = sb.table("nba_teams").select("*").order("seed").execute().data
-    taken_team_ids = [p["nba_team_id"] for p in picks]
-    available_teams = [t for t in teams if t["id"] not in taken_team_ids]
+    all_teams = _get_all_teams(sb)
+    # Build taken set: (league, team_id)
+    taken = set()
+    for p in picks:
+        league = p.get("league", "nba")
+        team_id = p.get("team_id") or p.get("nba_team_id")
+        taken.add((league, team_id))
+
+    nba_available = [t for t in all_teams if t["league"] == "nba" and ("nba", t["id"]) not in taken]
+    nhl_available = [t for t in all_teams if t["league"] == "nhl" and ("nhl", t["id"]) not in taken]
 
     # Determine whose turn it is
     member_ids = [m["id"] for m in members]
-    num_rounds = max(1, len(teams) // len(members)) if members else 1
+    total_teams = len(all_teams)
+    num_rounds = max(1, total_teams // len(members)) if members else 1
     snake = _get_snake_order(member_ids, num_rounds)
     current_pick_index = len(picks)
     current_turn = snake[current_pick_index] if current_pick_index < len(snake) else None
@@ -53,7 +72,8 @@ def draft_room(pool_id):
     template = "pool/draft_room.html" if pool["type"] == "draft" else "pool/auction_room.html"
     return render_template(template,
         pool=pool, members=members, picks=picks,
-        available_teams=available_teams, current_turn=current_turn,
+        nba_available=nba_available, nhl_available=nhl_available,
+        current_turn=current_turn,
         current_pick_index=current_pick_index)
 
 
@@ -74,19 +94,21 @@ def make_pick(pool_id):
     member = member[0]
 
     data = request.get_json()
-    nba_team_id = data["nba_team_id"]
+    team_id = data.get("team_id") or data.get("nba_team_id")
+    league = data.get("league", "nba")
 
     # Check team not already taken
     picks = sb.table("draft_picks").select("*").eq(
         "pool_id", pool_id
     ).order("pick_order").execute().data
 
-    taken_ids = [p["nba_team_id"] for p in picks]
-    if nba_team_id in taken_ids:
-        return jsonify({"error": "Team already taken"}), 400
+    for p in picks:
+        p_league = p.get("league", "nba")
+        p_team_id = p.get("team_id") or p.get("nba_team_id")
+        if p_league == league and p_team_id == team_id:
+            return jsonify({"error": "Team already taken"}), 400
 
     pick_order = len(picks) + 1
-    # Determine round from snake order
     all_members = sb.table("pool_members").select("id").eq(
         "pool_id", pool_id
     ).order("joined_at").execute().data
@@ -96,7 +118,9 @@ def make_pick(pool_id):
     sb.table("draft_picks").insert({
         "pool_id": pool_id,
         "member_id": member["id"],
-        "nba_team_id": nba_team_id,
+        "nba_team_id": team_id,  # keep for backward compat
+        "team_id": team_id,
+        "league": league,
         "pick_order": pick_order,
         "round": current_round,
     }).execute()

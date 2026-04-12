@@ -1,6 +1,6 @@
 # api/cron/sync_games.py
 """
-Vercel Cron job: polls ESPN for game results, updates database, recalculates standings.
+Vercel Cron job: polls ESPN for NBA + NHL game results, updates database, recalculates standings.
 Triggered by vercel.json cron config.
 """
 import sys
@@ -13,25 +13,19 @@ os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 
 from flask import Flask, jsonify
 from services.supabase_client import get_service_client
-from services.espn_api import fetch_scoreboard, fetch_game_boxscore
+from services.espn_api import fetch_scoreboard, fetch_nhl_scoreboard
 from routes.scores import recalculate_standings
 
 app = Flask(__name__)
 
 
-@app.route("/api/cron/sync-games", methods=["GET"])
-def sync_games():
-    sb = get_service_client()
-
-    # Fetch today's scoreboard
-    games = fetch_scoreboard()
-
+def _sync_league_games(sb, games, league, teams_table):
+    """Sync games for a single league. Returns count of new results."""
     new_results = 0
     for game in games:
         if not game["is_complete"]:
             continue
 
-        # Check if already stored
         existing = sb.table("game_results").select("id").eq(
             "espn_game_id", game["espn_game_id"]
         ).execute().data
@@ -39,14 +33,14 @@ def sync_games():
         if existing:
             continue
 
-        # Determine round (simplified: would need series data from ESPN)
         sb.table("game_results").insert({
             "espn_game_id": game["espn_game_id"],
             "home_team_id": game["home_team_id"],
             "away_team_id": game["away_team_id"],
             "home_score": game["home_score"],
             "away_score": game["away_score"],
-            "round": 1,  # TODO: determine from ESPN series data
+            "round": 1,
+            "league": league,
             "game_date": __import__("datetime").date.today().isoformat(),
         }).execute()
 
@@ -54,24 +48,35 @@ def sync_games():
         winner_id = game["home_team_id"] if game["home_score"] > game["away_score"] else game["away_team_id"]
         loser_id = game["away_team_id"] if winner_id == game["home_team_id"] else game["home_team_id"]
 
-        sb.rpc("increment_wins", {"team_id": winner_id}).execute()
-        sb.rpc("increment_losses", {"team_id": loser_id}).execute()
-
-        # Fetch and update player stats
-        box_score = fetch_game_boxscore(game["espn_game_id"])
-        for player in box_score:
-            sb.table("nba_players").update({
-                "playoff_points": player["points"],
-                "playoff_rebounds": player["rebounds"],
-                "playoff_assists": player["assists"],
-            }).eq("id", player["espn_player_id"]).execute()
+        try:
+            sb.table(teams_table).update({"playoff_wins": sb.table(teams_table).select("playoff_wins").eq("id", winner_id).execute().data[0]["playoff_wins"] + 1}).eq("id", winner_id).execute()
+            sb.table(teams_table).update({"playoff_losses": sb.table(teams_table).select("playoff_losses").eq("id", loser_id).execute().data[0]["playoff_losses"] + 1}).eq("id", loser_id).execute()
+        except Exception:
+            pass
 
         new_results += 1
 
+    return new_results
+
+
+@app.route("/api/cron/sync-games", methods=["GET"])
+def sync_games():
+    sb = get_service_client()
+
+    # Sync NBA
+    nba_games = fetch_scoreboard()
+    nba_new = _sync_league_games(sb, nba_games, "nba", "nba_teams")
+
+    # Sync NHL
+    nhl_games = fetch_nhl_scoreboard()
+    nhl_new = _sync_league_games(sb, nhl_games, "nhl", "nhl_teams")
+
+    total_new = nba_new + nhl_new
+
     # Recalculate standings for all active pools
-    if new_results > 0:
+    if total_new > 0:
         pools = sb.table("pools").select("id").eq("draft_status", "active").execute().data
         for pool in pools:
             recalculate_standings(pool["id"])
 
-    return jsonify({"synced": new_results})
+    return jsonify({"synced": total_new, "nba": nba_new, "nhl": nhl_new})

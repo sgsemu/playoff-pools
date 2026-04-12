@@ -26,17 +26,37 @@
         {% endif %}
     </div>
 
-    <!-- Available teams -->
-    <h2 class="section-title">Available Teams</h2>
-    <div class="team-grid" id="available-teams">
-        {% for team in available_teams %}
-        <button class="team-card" data-team-id="{{ team.id }}" onclick="pickTeam({{ team.id }}, '{{ team.name }}')">
+    <!-- NBA Teams -->
+    {% if nba_available %}
+    <h2 class="section-title">
+        <span class="league-badge league-nba">NBA</span> Available Teams
+    </h2>
+    <div class="team-grid" id="nba-teams">
+        {% for team in nba_available %}
+        <button class="team-card team-nba" data-team-id="{{ team.id }}" data-league="nba" onclick="pickTeam({{ team.id }}, 'nba', '{{ team.name }}')">
             <div class="team-seed">#{{ team.seed or '?' }}</div>
             <div class="team-name">{{ team.abbreviation }}</div>
             <div class="team-full">{{ team.name }}</div>
         </button>
         {% endfor %}
     </div>
+    {% endif %}
+
+    <!-- NHL Teams -->
+    {% if nhl_available %}
+    <h2 class="section-title">
+        <span class="league-badge league-nhl">NHL</span> Available Teams
+    </h2>
+    <div class="team-grid" id="nhl-teams">
+        {% for team in nhl_available %}
+        <button class="team-card team-nhl" data-team-id="{{ team.id }}" data-league="nhl" onclick="pickTeam({{ team.id }}, 'nhl', '{{ team.name }}')">
+            <div class="team-seed">#{{ team.seed or '?' }}</div>
+            <div class="team-name">{{ team.abbreviation }}</div>
+            <div class="team-full">{{ team.name }}</div>
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
     {% endif %}
 
     <!-- Draft log -->
@@ -49,7 +69,8 @@
             {% for m in members if m.id == pick.member_id %}
                 <span class="pick-member">{{ m.users.display_name }}</span>
             {% endfor %}
-            <span class="pick-team">Team {{ pick.nba_team_id }}</span>
+            <span class="pick-league badge badge-{{ pick.league or 'nba' }}">{{ (pick.league or 'nba') | upper }}</span>
+            <span class="pick-team">{{ pick.team_id or pick.nba_team_id }}</span>
         </div>
         {% endfor %}
     </div>

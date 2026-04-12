@@ -58,18 +58,21 @@ def recalculate_standings(pool_id):
         # TODO: proper series tracking would need game grouping by round/series
 
         # Build member_teams from draft_picks or auction_bids
+        # Use team_id if available, fall back to nba_team_id for backward compat
         if pool["type"] == "draft":
             picks = sb.table("draft_picks").select("*").eq("pool_id", pool_id).execute().data
             member_teams = {}
             for p in picks:
-                member_teams.setdefault(p["member_id"], []).append(p["nba_team_id"])
+                tid = p.get("team_id") or p.get("nba_team_id")
+                member_teams.setdefault(p["member_id"], []).append(tid)
         else:
             bids = sb.table("auction_bids").select("*").eq(
                 "pool_id", pool_id
             ).eq("is_winning_bid", True).execute().data
             member_teams = {}
             for b in bids:
-                member_teams.setdefault(b["member_id"], []).append(b["nba_team_id"])
+                tid = b.get("team_id") or b.get("nba_team_id")
+                member_teams.setdefault(b["member_id"], []).append(tid)
 
         scores = calculate_team_scores(pool["scoring_config"], team_wins, member_teams, series_wins)
 

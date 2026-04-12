@@ -10,32 +10,30 @@ async function startDraft() {
     }
 }
 
-async function pickTeam(teamId, teamName) {
-    if (!confirm(`Pick ${teamName}?`)) return;
+async function pickTeam(teamId, league, teamName) {
+    if (!confirm(`Pick ${teamName} (${league.toUpperCase()})?`)) return;
 
     const resp = await fetch(`/pool/${POOL_ID}/draft/pick`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nba_team_id: teamId })
+        body: JSON.stringify({ team_id: teamId, league: league })
     });
 
     const data = await resp.json();
     if (resp.ok) {
-        // Remove team from available
-        const btn = document.querySelector(`[data-team-id="${teamId}"]`);
+        const btn = document.querySelector(`[data-team-id="${teamId}"][data-league="${league}"]`);
         if (btn) btn.remove();
-        // Add to draft log
-        appendPick(data.pick_order, teamName);
+        appendPick(data.pick_order, league, teamName);
     } else {
         alert(data.error || "Failed to make pick");
     }
 }
 
-function appendPick(pickOrder, teamName) {
+function appendPick(pickOrder, league, teamName) {
     const log = document.getElementById("draft-log");
     const entry = document.createElement("div");
     entry.className = "pick-entry";
-    entry.innerHTML = `<span class="pick-num">#${pickOrder}</span> <span class="pick-team">${teamName}</span>`;
+    entry.innerHTML = `<span class="pick-num">#${pickOrder}</span> <span class="pick-league badge badge-${league}">${league.toUpperCase()}</span> <span class="pick-team">${teamName}</span>`;
     log.prepend(entry);
 }
 
@@ -51,7 +49,6 @@ if (typeof SUPABASE_URL !== "undefined" && SUPABASE_URL) {
             table: "draft_picks",
             filter: `pool_id=eq.${POOL_ID}`
         }, (payload) => {
-            // Reload to get fresh state — simple approach for MVP
             location.reload();
         })
         .subscribe();

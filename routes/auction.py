@@ -23,7 +23,8 @@ def place_bid(pool_id):
     member = member[0]
 
     data = request.get_json()
-    nba_team_id = data["nba_team_id"]
+    team_id = data.get("team_id") or data.get("nba_team_id")
+    league = data.get("league", "nba")
     bid_amount = float(data["bid_amount"])
 
     auction_config = pool.get("auction_config", {})
@@ -40,10 +41,10 @@ def place_bid(pool_id):
         if spent + bid_amount > starting_budget:
             return jsonify({"error": f"Over budget. Spent: ${spent}, Budget: ${starting_budget}"}), 400
 
-    # Check bid is higher than current high bid for this team
+    # Check bid is higher than current high bid for this team+league
     current_bids = sb.table("auction_bids").select("bid_amount").eq(
         "pool_id", pool_id
-    ).eq("nba_team_id", nba_team_id).order("bid_amount", desc=True).execute().data
+    ).eq("nba_team_id", team_id).eq("league", league).order("bid_amount", desc=True).execute().data
 
     if current_bids and bid_amount <= current_bids[0]["bid_amount"]:
         return jsonify({"error": f"Bid must be higher than current high: ${current_bids[0]['bid_amount']}"}), 400
@@ -51,7 +52,9 @@ def place_bid(pool_id):
     sb.table("auction_bids").insert({
         "pool_id": pool_id,
         "member_id": member["id"],
-        "nba_team_id": nba_team_id,
+        "nba_team_id": team_id,  # backward compat
+        "team_id": team_id,
+        "league": league,
         "bid_amount": bid_amount,
         "is_winning_bid": False,
     }).execute()
@@ -73,11 +76,12 @@ def resolve_team(pool_id):
         return jsonify({"error": "Only the creator can resolve bids"}), 403
 
     data = request.get_json()
-    nba_team_id = data["nba_team_id"]
+    team_id = data.get("team_id") or data.get("nba_team_id")
+    league = data.get("league", "nba")
 
     bids = sb.table("auction_bids").select("*").eq(
         "pool_id", pool_id
-    ).eq("nba_team_id", nba_team_id).order("bid_amount", desc=True).execute().data
+    ).eq("nba_team_id", team_id).eq("league", league).order("bid_amount", desc=True).execute().data
 
     if not bids:
         return jsonify({"error": "No bids for this team"}), 400

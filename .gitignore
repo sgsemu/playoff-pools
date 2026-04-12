@@ -5,3 +5,5 @@ node_modules/
 .vercel/
 venv/
 .pytest_cache/
+.vercel
+*.DS_Store
