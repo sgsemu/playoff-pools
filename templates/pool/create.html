@@ -8,7 +8,7 @@
         <div class="wizard-step" id="step-1">
             <div class="form-group">
                 <label for="name">Pool Name</label>
-                <input type="text" id="name" name="name" required placeholder="e.g. Friends NBA Playoffs 2026">
+                <input type="text" id="name" name="name" placeholder="e.g. Friends Playoff Pool 2026">
             </div>
             <div class="form-group">
                 <label>Pool Type</label>
@@ -82,20 +82,6 @@
                 </div>
             </div>
 
-            <!-- Salary cap specific -->
-            <div id="salary-cap-options" class="hidden">
-                <div class="form-group">
-                    <label for="salary_cap">Salary Cap ($)</label>
-                    <input type="number" id="salary_cap" name="salary_cap" value="50000" min="10000" step="5000">
-                </div>
-                <div class="form-group">
-                    <label>Stat Scoring</label>
-                    <div class="form-group"><label>Points multiplier</label><input type="number" name="stat_points_mult" value="1" step="0.1"></div>
-                    <div class="form-group"><label>Rebounds multiplier</label><input type="number" name="stat_rebounds_mult" value="0" step="0.1"></div>
-                    <div class="form-group"><label>Assists multiplier</label><input type="number" name="stat_assists_mult" value="0" step="0.1"></div>
-                </div>
-            </div>
-
             <button type="button" class="btn btn-secondary" onclick="nextStep(1)">Back</button>
             <button type="button" class="btn btn-primary" onclick="nextStep(3)">Next</button>
         </div>
@@ -118,6 +104,11 @@
 
 <script>
 function nextStep(step) {
+    // Validate step 1 before moving forward
+    if (step > 1) {
+        var name = document.getElementById('name').value.trim();
+        if (!name) { alert('Please enter a pool name.'); return; }
+    }
     document.querySelectorAll('.wizard-step').forEach(s => s.classList.add('hidden'));
     document.getElementById('step-' + step).classList.remove('hidden');
 }
@@ -125,9 +116,7 @@ function nextStep(step) {
 const typeRadios = document.querySelectorAll('input[name="type"]');
 typeRadios.forEach(r => r.addEventListener('change', function() {
     const t = this.value;
-    document.getElementById('draft-auction-options').classList.toggle('hidden', t === 'salary_cap');
     document.getElementById('auction-options').classList.toggle('hidden', t !== 'auction');
-    document.getElementById('salary-cap-options').classList.toggle('hidden', t !== 'salary_cap');
 }));
 
 document.getElementById('scoring-type').addEventListener('change', function() {
