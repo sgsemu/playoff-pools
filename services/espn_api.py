@@ -180,9 +180,8 @@ def fetch_nhl_standings(n=16):
     all_teams.sort(key=lambda x: x["wins"], reverse=True)
     top = all_teams[:n]
 
-    for conf in ["East", "West"]:
-        conf_teams = [t for t in top if t["conference"] == conf]
-        for i, t in enumerate(conf_teams, 1):
-            t["seed"] = i
+    # Assign overall seed by rank (1-16), not per-conference
+    for i, t in enumerate(top, 1):
+        t["seed"] = i
 
     return top
