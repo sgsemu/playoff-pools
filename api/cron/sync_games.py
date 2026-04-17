@@ -21,9 +21,16 @@ app = Flask(__name__)
 
 def _sync_league_games(sb, games, league, teams_table):
     """Sync games for a single league. Returns count of new results."""
+    # Only track games involving playoff teams in our database
+    playoff_ids = {t["id"] for t in sb.table(teams_table).select("id").execute().data}
+
     new_results = 0
     for game in games:
         if not game["is_complete"]:
+            continue
+
+        # Skip games that don't involve two playoff teams
+        if game["home_team_id"] not in playoff_ids or game["away_team_id"] not in playoff_ids:
             continue
 
         existing = sb.table("game_results").select("id").eq(

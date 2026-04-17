@@ -17,6 +17,10 @@ def fetch_scoreboard(date=None):
 
     games = []
     for event in data.get("events", []):
+        # Only sync playoff games (season type 3)
+        if event.get("season", {}).get("type", 0) != 3:
+            continue
+
         comp = event["competitions"][0]
         competitors = comp["competitors"]
         home = next(c for c in competitors if c["homeAway"] == "home")
@@ -133,6 +137,10 @@ def fetch_nhl_scoreboard(date=None):
 
     games = []
     for event in data.get("events", []):
+        # Only sync playoff games (season type 3)
+        if event.get("season", {}).get("type", 0) != 3:
+            continue
+
         comp = event["competitions"][0]
         competitors = comp["competitors"]
         home = next(c for c in competitors if c["homeAway"] == "home")
