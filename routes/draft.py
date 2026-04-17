@@ -100,6 +100,9 @@ def make_pick(pool_id):
         return jsonify({"error": "Pool not found"}), 404
     pool = pool[0]
 
+    if pool["draft_status"] != "active":
+        return jsonify({"error": "Draft is not active"}), 409
+
     member = sb.table("pool_members").select("*").eq(
         "pool_id", pool_id
     ).eq("user_id", session["user_id"]).execute().data
@@ -111,7 +114,6 @@ def make_pick(pool_id):
     team_id = data.get("team_id") or data.get("nba_team_id")
     league = data.get("league", "nba")
 
-    # Check team not already taken
     picks = sb.table("draft_picks").select("*").eq(
         "pool_id", pool_id
     ).order("pick_order").execute().data
@@ -122,17 +124,30 @@ def make_pick(pool_id):
         if p_league == league and p_team_id == team_id:
             return jsonify({"error": "Team already taken"}), 400
 
-    pick_order = len(picks) + 1
-    all_members = sb.table("pool_members").select("id").eq(
+    all_members = sb.table("pool_members").select("*").eq(
         "pool_id", pool_id
     ).order("joined_at").execute().data
-    num_members = len(all_members)
-    current_round = ((pick_order - 1) // num_members) + 1 if num_members > 0 else 1
+    all_members = _order_members_for_draft(all_members)
+    member_ids = [m["id"] for m in all_members]
+    num_members = len(member_ids)
+    if num_members == 0:
+        return jsonify({"error": "No members in pool"}), 409
+
+    all_teams = _get_all_teams(sb)
+    num_rounds = max(1, len(all_teams) // num_members)
+    snake = _get_snake_order(member_ids, num_rounds)
+
+    pick_order = len(picks) + 1
+    if pick_order > len(snake):
+        return jsonify({"error": "Draft is complete"}), 409
+    expected_member_id, current_round = snake[pick_order - 1]
+    if expected_member_id != member["id"]:
+        return jsonify({"error": "Not your turn"}), 403
 
     sb.table("draft_picks").insert({
         "pool_id": pool_id,
         "member_id": member["id"],
-        "nba_team_id": team_id,  # keep for backward compat
+        "nba_team_id": team_id,
         "team_id": team_id,
         "league": league,
         "pick_order": pick_order,
