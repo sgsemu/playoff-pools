@@ -39,6 +39,12 @@ def game_scores(pool_id):
         m["users"] = user[0] if user else {"display_name": "Unknown"}
     member_map = {m["id"]: m for m in raw_members}
 
+    # Count wins from game_results (same source as scoring engine)
+    team_wins = {}
+    for g in games:
+        winner_id = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
+        team_wins[winner_id] = team_wins.get(winner_id, 0) + 1
+
     # Build member → teams mapping
     picks = sb.table("draft_picks").select("*").eq("pool_id", pool_id).order("pick_order").execute().data
     member_teams = {}
@@ -51,7 +57,7 @@ def game_scores(pool_id):
                 "name": team["name"],
                 "abbreviation": team["abbreviation"],
                 "league": league,
-                "wins": team.get("playoff_wins", 0),
+                "wins": team_wins.get(tid, 0),
             })
 
     upcoming = fetch_upcoming_games(days=7)
