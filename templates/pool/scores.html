@@ -2,7 +2,12 @@
 {% block title %}Scores - {{ pool.name }}{% endblock %}
 {% block content %}
 <div class="scores-page">
-    <h1>{{ pool.name }} — Scores</h1>
+    <div class="scores-header">
+        <h1>{{ pool.name }} — Scores</h1>
+        <form method="POST" action="/pool/{{ pool.id }}/scores/refresh" style="margin:0;">
+            <button type="submit" class="btn btn-refresh">🔄 Refresh Scores</button>
+        </form>
+    </div>
 
     <!-- Standings summary -->
     {% if standings %}

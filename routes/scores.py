@@ -1,8 +1,9 @@
-from flask import Blueprint, render_template, jsonify, session
+from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.scoring import calculate_team_scores, calculate_salary_cap_scores
-from services.espn_api import fetch_upcoming_games
+from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard
+import datetime
 
 scores_bp = Blueprint("scores", __name__)
 
@@ -41,6 +42,67 @@ def game_scores(pool_id):
     return render_template("pool/scores.html",
         pool=pool, games=games, standings=standings, member_map=member_map,
         upcoming=upcoming)
+
+
+@scores_bp.route("/pool/<pool_id>/scores/refresh", methods=["POST"])
+@login_required
+def refresh_scores(pool_id):
+    """Manually sync latest game results from ESPN and recalculate standings."""
+    sb = get_service_client()
+    pool = sb.table("pools").select("id").eq("id", pool_id).execute().data
+    if not pool:
+        return "Pool not found", 404
+
+    nba_ids = {t["id"] for t in sb.table("nba_teams").select("id").execute().data}
+    nhl_ids = {t["id"] for t in sb.table("nhl_teams").select("id").execute().data}
+    new_count = 0
+
+    for games, league, team_ids, teams_table in [
+        (fetch_scoreboard(), "nba", nba_ids, "nba_teams"),
+        (fetch_nhl_scoreboard(), "nhl", nhl_ids, "nhl_teams"),
+    ]:
+        for game in games:
+            if not game["is_complete"]:
+                continue
+            if game["home_team_id"] not in team_ids or game["away_team_id"] not in team_ids:
+                continue
+            existing = sb.table("game_results").select("id").eq(
+                "espn_game_id", game["espn_game_id"]
+            ).execute().data
+            if existing:
+                continue
+
+            sb.table("game_results").insert({
+                "espn_game_id": game["espn_game_id"],
+                "home_team_id": game["home_team_id"],
+                "away_team_id": game["away_team_id"],
+                "home_score": game["home_score"],
+                "away_score": game["away_score"],
+                "round": 1,
+                "league": league,
+                "game_date": datetime.date.today().isoformat(),
+            }).execute()
+
+            winner_id = game["home_team_id"] if game["home_score"] > game["away_score"] else game["away_team_id"]
+            loser_id = game["away_team_id"] if winner_id == game["home_team_id"] else game["home_team_id"]
+            try:
+                w = sb.table(teams_table).select("playoff_wins").eq("id", winner_id).execute().data
+                l = sb.table(teams_table).select("playoff_losses").eq("id", loser_id).execute().data
+                if w:
+                    sb.table(teams_table).update({"playoff_wins": w[0]["playoff_wins"] + 1}).eq("id", winner_id).execute()
+                if l:
+                    sb.table(teams_table).update({"playoff_losses": l[0]["playoff_losses"] + 1}).eq("id", loser_id).execute()
+            except Exception:
+                pass
+            new_count += 1
+
+    if new_count > 0:
+        recalculate_standings(pool_id)
+        flash(f"Synced {new_count} new game(s) and updated standings.", "success")
+    else:
+        flash("Scores are up to date — no new completed games.", "success")
+
+    return redirect(f"/pool/{pool_id}/scores")
 
 
 def recalculate_standings(pool_id):
