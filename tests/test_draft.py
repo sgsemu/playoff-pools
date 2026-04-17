@@ -213,6 +213,98 @@ def test_undo_last_pick_rejects_when_no_picks(mock_sb, authed_client):
 
 
 @patch("routes.draft.get_service_client")
+def test_assign_pick_happy_path(mock_sb, authed_client):
+    pool = _mock_pool(draft_status="active")
+
+    def _side_effect(*args, **_kwargs):
+        name = args[0] if args else ""
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [pool]
+        elif name == "pool_members":
+            # .eq(id).eq(pool_id) membership check
+            t.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{"id": "m1"}]
+            # .eq(pool_id) for num_members count
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"id": "m1"}, {"id": "m2"}]
+        elif name == "nba_teams":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"id": 5}]
+        elif name == "draft_picks":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+            t.insert.return_value.execute.return_value.data = [{"id": "pick-new"}]
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
+
+    resp = authed_client.post("/pool/pool-1/draft/assign", json={
+        "member_id": "m1", "team_id": 5, "league": "nba",
+    })
+    assert resp.status_code == 200
+
+
+@patch("routes.draft.get_service_client")
+def test_assign_pick_rejects_taken_team(mock_sb, authed_client):
+    pool = _mock_pool(draft_status="active")
+
+    def _side_effect(*args, **_kwargs):
+        name = args[0] if args else ""
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [pool]
+        elif name == "pool_members":
+            t.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{"id": "m1"}]
+        elif name == "nba_teams":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"id": 5}]
+        elif name == "draft_picks":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+                {"team_id": 5, "nba_team_id": 5, "league": "nba", "pick_order": 1},
+            ]
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
+
+    resp = authed_client.post("/pool/pool-1/draft/assign", json={
+        "member_id": "m1", "team_id": 5, "league": "nba",
+    })
+    assert resp.status_code == 400
+
+
+@patch("routes.draft.get_service_client")
+def test_remove_pick_happy_path(mock_sb, authed_client):
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+    mock_table.select.return_value.eq.return_value.execute.return_value.data = [_mock_pool(draft_status="active")]
+    mock_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{"id": "pick-42", "pool_id": "pool-1"}]
+    mock_table.delete.return_value.eq.return_value.execute.return_value.data = [{}]
+
+    resp = authed_client.post("/pool/pool-1/draft/remove-pick", json={"pick_id": "pick-42"})
+    assert resp.status_code == 200
+
+
+@patch("routes.draft.get_service_client")
+def test_finalize_draft_happy_path(mock_sb, authed_client):
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+    mock_table.select.return_value.eq.return_value.execute.return_value.data = [_mock_pool(draft_status="active")]
+    mock_table.update.return_value.eq.return_value.execute.return_value.data = [{}]
+
+    resp = authed_client.post("/pool/pool-1/draft/finalize")
+    assert resp.status_code == 200
+    mock_table.update.assert_called_with({"draft_status": "complete"})
+
+
+@patch("routes.draft.get_service_client")
+def test_finalize_rejects_non_creator(mock_sb, authed_client):
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+    pool = _mock_pool(draft_status="active")
+    pool["creator_id"] = "someone-else"
+    mock_table.select.return_value.eq.return_value.execute.return_value.data = [pool]
+
+    resp = authed_client.post("/pool/pool-1/draft/finalize")
+    assert resp.status_code == 403
+
+
+@patch("routes.draft.get_service_client")
 def test_set_draft_order_happy_path(mock_sb, authed_client):
     mock_table = MagicMock()
     mock_sb.return_value.table.return_value = mock_table

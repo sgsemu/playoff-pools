@@ -1,5 +1,68 @@
 // draft.js — Live draft real-time client using Supabase Realtime
 
+function updateAssignTeams() {
+    const leagueSelect = document.getElementById("assign-league");
+    const teamSelect = document.getElementById("assign-team");
+    if (!leagueSelect || !teamSelect) return;
+    const league = leagueSelect.value;
+    const data = document.getElementById(league + "-teams-data");
+    if (!data) return;
+    const teams = JSON.parse(data.textContent || "[]");
+    teamSelect.innerHTML = "";
+    teams.forEach((t) => {
+        const opt = document.createElement("option");
+        opt.value = t.id;
+        opt.dataset.league = league;
+        opt.textContent = t.name;
+        teamSelect.appendChild(opt);
+    });
+}
+
+async function assignPick() {
+    const memberId = document.getElementById("assign-member").value;
+    const league = document.getElementById("assign-league").value;
+    const teamId = document.getElementById("assign-team").value;
+    const errorEl = document.getElementById("assign-error");
+    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+    const resp = await fetch(`/pool/${POOL_ID}/draft/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ member_id: memberId, team_id: Number(teamId), league }),
+    });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const data = await resp.json().catch(() => ({}));
+        if (errorEl) { errorEl.textContent = data.error || "Failed to assign"; errorEl.hidden = false; }
+    }
+}
+
+async function removePick(pickId) {
+    if (!confirm("Remove this team from the member's roster?")) return;
+    const resp = await fetch(`/pool/${POOL_ID}/draft/remove-pick`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pick_id: pickId }),
+    });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const data = await resp.json().catch(() => ({}));
+        alert(data.error || "Failed to remove pick");
+    }
+}
+
+async function finalizeDraft() {
+    if (!confirm("Finalize the draft? No more picks, assigns, or removals after this.")) return;
+    const resp = await fetch(`/pool/${POOL_ID}/draft/finalize`, { method: "POST" });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const data = await resp.json().catch(() => ({}));
+        alert(data.error || "Failed to finalize");
+    }
+}
+
 async function undoLastPick() {
     if (!confirm("Undo the most recent pick? The member whose pick is undone will be up again.")) return;
     const resp = await fetch(`/pool/${POOL_ID}/draft/undo`, { method: "POST" });

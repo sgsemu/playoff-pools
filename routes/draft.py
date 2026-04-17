@@ -204,6 +204,101 @@ def undo_last_pick(pool_id):
     return jsonify({"success": True, "undone_pick_order": last["pick_order"]})
 
 
+def _require_creator_active(sb, pool_id, user_id):
+    """Return (pool, error_response) — error_response is None on success."""
+    pool = sb.table("pools").select("*").eq("id", pool_id).execute().data
+    if not pool:
+        return None, (jsonify({"error": "Pool not found"}), 404)
+    pool = pool[0]
+    if pool["creator_id"] != user_id:
+        return None, (jsonify({"error": "Creator only"}), 403)
+    if pool["draft_status"] != "active":
+        return None, (jsonify({"error": "Draft is not active"}), 409)
+    return pool, None
+
+
+@draft_bp.route("/pool/<pool_id>/draft/assign", methods=["POST"])
+@login_required
+def assign_pick(pool_id):
+    sb = get_service_client()
+    pool, err = _require_creator_active(sb, pool_id, session["user_id"])
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    member_id = data.get("member_id")
+    team_id = data.get("team_id")
+    league = data.get("league", "nba")
+    if not member_id or team_id is None or league not in ("nba", "nhl"):
+        return jsonify({"error": "member_id, team_id, and league are required"}), 400
+
+    member = sb.table("pool_members").select("id").eq("id", member_id).eq("pool_id", pool_id).execute().data
+    if not member:
+        return jsonify({"error": "Member not in pool"}), 400
+
+    team_table = "nba_teams" if league == "nba" else "nhl_teams"
+    team = sb.table(team_table).select("id").eq("id", team_id).execute().data
+    if not team:
+        return jsonify({"error": "Team not found"}), 400
+
+    picks = sb.table("draft_picks").select("*").eq(
+        "pool_id", pool_id
+    ).order("pick_order").execute().data
+    for p in picks:
+        if (p.get("league", "nba") == league and (p.get("team_id") or p.get("nba_team_id")) == team_id):
+            return jsonify({"error": "Team already drafted"}), 400
+
+    all_members = sb.table("pool_members").select("id").eq("pool_id", pool_id).execute().data
+    num_members = max(1, len(all_members))
+    pick_order = (max((p["pick_order"] for p in picks), default=0)) + 1
+    current_round = ((pick_order - 1) // num_members) + 1
+
+    sb.table("draft_picks").insert({
+        "pool_id": pool_id,
+        "member_id": member_id,
+        "nba_team_id": team_id,
+        "team_id": team_id,
+        "league": league,
+        "pick_order": pick_order,
+        "round": current_round,
+    }).execute()
+
+    return jsonify({"success": True, "pick_order": pick_order})
+
+
+@draft_bp.route("/pool/<pool_id>/draft/remove-pick", methods=["POST"])
+@login_required
+def remove_pick(pool_id):
+    sb = get_service_client()
+    _pool, err = _require_creator_active(sb, pool_id, session["user_id"])
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    pick_id = data.get("pick_id")
+    if not pick_id:
+        return jsonify({"error": "pick_id required"}), 400
+
+    pick = sb.table("draft_picks").select("*").eq("id", pick_id).eq("pool_id", pool_id).execute().data
+    if not pick:
+        return jsonify({"error": "Pick not found"}), 404
+
+    sb.table("draft_picks").delete().eq("id", pick_id).execute()
+    return jsonify({"success": True})
+
+
+@draft_bp.route("/pool/<pool_id>/draft/finalize", methods=["POST"])
+@login_required
+def finalize_draft(pool_id):
+    sb = get_service_client()
+    _pool, err = _require_creator_active(sb, pool_id, session["user_id"])
+    if err:
+        return err
+
+    sb.table("pools").update({"draft_status": "complete"}).eq("id", pool_id).execute()
+    return jsonify({"success": True})
+
+
 @draft_bp.route("/pool/<pool_id>/draft/order", methods=["POST"])
 @login_required
 def set_draft_order(pool_id):

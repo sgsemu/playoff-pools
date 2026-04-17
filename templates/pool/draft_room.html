@@ -100,6 +100,72 @@
         </div>
         {% endfor %}
     </div>
+
+    {% if pool.draft_status == 'active' and pool.creator_id == session.get('user_id') %}
+    <section class="commissioner">
+        <h2 class="section-title">Commissioner</h2>
+        <p class="commissioner-hint">Assign or remove teams outside the normal draft order. Use to fix mistakes.</p>
+
+        <div class="commissioner-rosters">
+            {% for m in members %}
+            <div class="roster-block">
+                <h3 class="roster-member">{{ m.users.display_name }}</h3>
+                <ul class="roster-teams">
+                    {% for pick in picks if pick.member_id == m.id %}
+                    <li class="roster-team" data-pick-id="{{ pick.id }}">
+                        <span class="badge badge-{{ pick.league or 'nba' }}">{{ (pick.league or 'nba') | upper }}</span>
+                        <span class="roster-team-name">{{ pick.team_name }}</span>
+                        <button class="btn-remove" type="button" onclick="removePick('{{ pick.id }}')" aria-label="Remove {{ pick.team_name }}">×</button>
+                    </li>
+                    {% else %}
+                    <li class="roster-empty">No teams yet</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="assign-form">
+            <h3 class="section-title">Assign a team</h3>
+            <div class="assign-row">
+                <label>Member
+                    <select id="assign-member">
+                        {% for m in members %}
+                        <option value="{{ m.id }}">{{ m.users.display_name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>League
+                    <select id="assign-league" onchange="updateAssignTeams()">
+                        <option value="nba">NBA</option>
+                        <option value="nhl">NHL</option>
+                    </select>
+                </label>
+                <label>Team
+                    <select id="assign-team">
+                        {% for team in nba_available %}
+                        <option value="{{ team.id }}" data-league="nba">{{ team.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <button class="btn btn-primary" type="button" onclick="assignPick()">Assign</button>
+            </div>
+            <div class="assign-error" id="assign-error" hidden></div>
+        </div>
+
+        <div class="finalize-row">
+            <button class="btn btn-danger" type="button" onclick="finalizeDraft()">Finalize draft</button>
+            <span class="finalize-hint">Locks the roster. No more picks, assigns, or removals.</span>
+        </div>
+    </section>
+
+    <script id="nhl-teams-data" type="application/json">
+        {{ nhl_available | tojson }}
+    </script>
+    <script id="nba-teams-data" type="application/json">
+        {{ nba_available | tojson }}
+    </script>
+    {% endif %}
 </div>
 
 <a href="/pool/{{ pool.id }}" class="btn btn-secondary" style="margin-top:16px;">Back to Pool</a>

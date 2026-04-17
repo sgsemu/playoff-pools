@@ -249,3 +249,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .draft-order-name { flex: 1; }
 .draft-order-handle { color: #999; user-select: none; }
 .draft-order-error { color: #b00020; font-size: 0.9rem; margin-bottom: 8px; }
+
+/* Commissioner panel */
+.commissioner { margin-top: 24px; padding: 16px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+.commissioner-hint { color: #666; font-size: 0.9rem; margin: 4px 0 12px; }
+.commissioner-rosters { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.roster-block { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px; }
+.roster-member { margin: 0 0 8px; font-size: 1rem; }
+.roster-teams { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.roster-team { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+.roster-team-name { flex: 1; }
+.roster-empty { color: #999; font-size: 0.85rem; }
+.btn-remove { background: transparent; border: none; color: #b00020; cursor: pointer; font-size: 1.1rem; padding: 0 4px; }
+.btn-remove:hover { color: #700014; }
+.assign-form { margin-top: 8px; }
+.assign-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.assign-row label { display: flex; flex-direction: column; font-size: 0.85rem; color: #555; }
+.assign-row select { padding: 6px; min-width: 140px; }
+.assign-error { color: #b00020; font-size: 0.9rem; margin-top: 6px; }
+.finalize-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid #e0e0e0; }
+.finalize-hint { color: #666; font-size: 0.85rem; }
+.btn-danger { background: #b00020; color: #fff; }
+.btn-danger:hover { background: #800018; }
