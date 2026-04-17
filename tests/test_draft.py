@@ -110,3 +110,39 @@ def test_order_members_nulls_sorted_by_joined_at_after_positioned():
     ]
     ordered = _order_members_for_draft(members)
     assert [m["id"] for m in ordered] == ["pos1", "pos2", "early_null", "late"]
+
+
+@patch("routes.draft.get_service_client")
+def test_set_draft_order_happy_path(mock_sb, authed_client):
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+
+    # Pool lookup (pending, creator is user-1)
+    pool = _mock_pool(draft_status="pending")
+    # Members fetch returns two members
+    def _select_side_effect(*_args, **_kwargs):
+        m = MagicMock()
+        # chain for .eq(pool_id).execute() -> pool lookup
+        m.eq.return_value.execute.return_value.data = [pool]
+        # chain for .eq(pool_id).order(joined_at).execute() -> members
+        m.eq.return_value.order.return_value.execute.return_value.data = [
+            {"id": "m1", "user_id": "user-1"},
+            {"id": "m2", "user_id": "user-2"},
+        ]
+        return m
+    mock_table.select.side_effect = _select_side_effect
+
+    # Capture updates
+    mock_table.update.return_value.eq.return_value.execute.return_value.data = [{}]
+
+    resp = authed_client.post("/pool/pool-1/draft/order", json={
+        "member_ids": ["m2", "m1"],
+    })
+    assert resp.status_code == 200
+    assert resp.get_json() == {"success": True}
+
+    # Two update calls, positions 1 and 2 assigned to m2 and m1 respectively
+    update_calls = mock_table.update.call_args_list
+    assert len(update_calls) == 2
+    assert update_calls[0][0][0] == {"draft_position": 1}
+    assert update_calls[1][0][0] == {"draft_position": 2}

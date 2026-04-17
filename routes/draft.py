@@ -156,3 +156,41 @@ def start_draft(pool_id):
 
     sb.table("pools").update({"draft_status": "active"}).eq("id", pool_id).execute()
     return jsonify({"success": True})
+
+
+@draft_bp.route("/pool/<pool_id>/draft/order", methods=["POST"])
+@login_required
+def set_draft_order(pool_id):
+    sb = get_service_client()
+    pool = sb.table("pools").select("*").eq("id", pool_id).execute().data
+    if not pool:
+        return jsonify({"error": "Pool not found"}), 404
+    pool = pool[0]
+
+    if pool["creator_id"] != session["user_id"]:
+        return jsonify({"error": "Only the creator can set draft order"}), 403
+
+    if pool["draft_status"] != "pending":
+        return jsonify({"error": "Draft order is locked once the draft has started"}), 409
+
+    data = request.get_json(silent=True) or {}
+    submitted = data.get("member_ids")
+    if not isinstance(submitted, list) or not submitted:
+        return jsonify({"error": "member_ids must be a non-empty list"}), 400
+
+    current = sb.table("pool_members").select("*").eq(
+        "pool_id", pool_id
+    ).order("joined_at").execute().data
+    current_ids = {m["id"] for m in current}
+
+    if len(submitted) != len(set(submitted)):
+        return jsonify({"error": "member_ids contains duplicates"}), 400
+    if set(submitted) != current_ids:
+        return jsonify({"error": "member_ids must match current pool members"}), 400
+
+    for position, member_id in enumerate(submitted, start=1):
+        sb.table("pool_members").update(
+            {"draft_position": position}
+        ).eq("id", member_id).execute()
+
+    return jsonify({"success": True})
