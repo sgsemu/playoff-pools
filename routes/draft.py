@@ -28,6 +28,19 @@ def _get_snake_order(member_ids, num_rounds):
     return order
 
 
+def _order_members_for_draft(members):
+    """Sort members by draft_position (nulls last), then joined_at ascending.
+
+    Members whose draft_position has never been set fall to the end,
+    preserving join-order among themselves. New joiners therefore land
+    at the end automatically.
+    """
+    def key(m):
+        pos = m.get("draft_position")
+        return (0, pos, m.get("joined_at") or "") if pos is not None else (1, 0, m.get("joined_at") or "")
+    return sorted(members, key=key)
+
+
 @draft_bp.route("/pool/<pool_id>/draft")
 @login_required
 def draft_room(pool_id):

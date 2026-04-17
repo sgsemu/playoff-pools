@@ -76,3 +76,37 @@ def test_cannot_pick_already_taken_team(mock_sb, authed_client):
 
     resp = authed_client.post("/pool/pool-1/draft/pick", json={"nba_team_id": 1})
     assert resp.status_code == 400
+
+
+from routes.draft import _order_members_for_draft
+
+
+def test_order_members_uses_draft_position_first():
+    members = [
+        {"id": "a", "joined_at": "2026-04-01T00:00:00Z", "draft_position": None},
+        {"id": "b", "joined_at": "2026-04-02T00:00:00Z", "draft_position": 1},
+        {"id": "c", "joined_at": "2026-04-03T00:00:00Z", "draft_position": 2},
+    ]
+    ordered = _order_members_for_draft(members)
+    assert [m["id"] for m in ordered] == ["b", "c", "a"]
+
+
+def test_order_members_falls_back_to_joined_at_when_all_null():
+    members = [
+        {"id": "a", "joined_at": "2026-04-03T00:00:00Z", "draft_position": None},
+        {"id": "b", "joined_at": "2026-04-01T00:00:00Z", "draft_position": None},
+        {"id": "c", "joined_at": "2026-04-02T00:00:00Z", "draft_position": None},
+    ]
+    ordered = _order_members_for_draft(members)
+    assert [m["id"] for m in ordered] == ["b", "c", "a"]
+
+
+def test_order_members_nulls_sorted_by_joined_at_after_positioned():
+    members = [
+        {"id": "late", "joined_at": "2026-04-05T00:00:00Z", "draft_position": None},
+        {"id": "early_null", "joined_at": "2026-04-01T00:00:00Z", "draft_position": None},
+        {"id": "pos2", "joined_at": "2026-04-02T00:00:00Z", "draft_position": 2},
+        {"id": "pos1", "joined_at": "2026-04-03T00:00:00Z", "draft_position": 1},
+    ]
+    ordered = _order_members_for_draft(members)
+    assert [m["id"] for m in ordered] == ["pos1", "pos2", "early_null", "late"]
