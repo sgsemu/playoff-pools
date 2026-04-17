@@ -7,16 +7,18 @@ ESPN_BASE = ESPN_NBA_BASE  # backward compat
 
 
 def fetch_upcoming_games(days=7):
-    """Fetch upcoming playoff games for NBA and NHL over the next N days."""
-    nba_games = []
-    nhl_games = []
+    """Fetch upcoming playoff games grouped by date, split by league."""
+    from collections import OrderedDict
+
+    by_date = OrderedDict()
 
     for d in range(days):
-        dt = (date.today() + timedelta(days=d)).strftime("%Y%m%d")
-        for base, league, bucket in [
-            (ESPN_NBA_BASE, "nba", nba_games),
-            (ESPN_NHL_BASE, "nhl", nhl_games),
-        ]:
+        game_date = date.today() + timedelta(days=d)
+        dt = game_date.strftime("%Y%m%d")
+        date_label = game_date.strftime("%a, %b %-d")  # e.g. "Fri, Apr 18"
+        date_key = game_date.isoformat()
+
+        for base, league in [(ESPN_NBA_BASE, "nba"), (ESPN_NHL_BASE, "nhl")]:
             try:
                 resp = requests.get(f"{base}/scoreboard", params={"dates": dt}, timeout=10)
                 resp.raise_for_status()
@@ -28,18 +30,21 @@ def fetch_upcoming_games(days=7):
                         continue
                     home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
                     away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
-                    bucket.append({
+
+                    if date_key not in by_date:
+                        by_date[date_key] = {"label": date_label, "nba": [], "nhl": []}
+
+                    by_date[date_key][league].append({
                         "home_name": home["team"].get("displayName", "?"),
                         "home_abbr": home["team"].get("abbreviation", "?"),
                         "away_name": away["team"].get("displayName", "?"),
                         "away_abbr": away["team"].get("abbreviation", "?"),
-                        "date": event["date"],
                         "status": comp["status"]["type"]["shortDetail"],
                     })
             except Exception:
                 continue
 
-    return {"nba": nba_games, "nhl": nhl_games}
+    return by_date
 
 
 def fetch_scoreboard(date=None):

@@ -42,41 +42,63 @@
     {% endif %}
 
     <!-- Upcoming Games -->
-    {% if upcoming and (upcoming.nba or upcoming.nhl) %}
+    {% if upcoming %}
     <h2 class="section-title">Upcoming Games</h2>
 
-    {% if upcoming.nba %}
-    <h3 class="league-header">🏀 NBA</h3>
-    <div class="games-list">
-        {% for g in upcoming.nba %}
-        <div class="game-card upcoming">
-            <div class="game-teams">
-                <span>{{ g.away_abbr }}</span>
-                <span class="game-at">@</span>
-                <span>{{ g.home_abbr }}</span>
-            </div>
-            <div class="game-meta">{{ g.status }}</div>
-        </div>
+    <div class="day-tabs">
+        {% for date_key, day in upcoming.items() %}
+        <button class="day-tab {% if loop.first %}active{% endif %}" onclick="selectDay('{{ date_key }}', this)">{{ day.label }}</button>
         {% endfor %}
     </div>
-    {% endif %}
 
-    {% if upcoming.nhl %}
-    <h3 class="league-header">🏒 NHL</h3>
-    <div class="games-list">
-        {% for g in upcoming.nhl %}
-        <div class="game-card upcoming">
-            <div class="game-teams">
-                <span>{{ g.away_abbr }}</span>
-                <span class="game-at">@</span>
-                <span>{{ g.home_abbr }}</span>
+    {% for date_key, day in upcoming.items() %}
+    <div class="day-games" id="day-{{ date_key }}" style="{% if not loop.first %}display:none{% endif %}">
+        {% if day.nba %}
+        <h3 class="league-header">🏀 NBA</h3>
+        <div class="games-list">
+            {% for g in day.nba %}
+            <div class="game-card upcoming">
+                <div class="game-teams">
+                    <span>{{ g.away_abbr }}</span>
+                    <span class="game-at">@</span>
+                    <span>{{ g.home_abbr }}</span>
+                </div>
+                <div class="game-meta">{{ g.status }}</div>
             </div>
-            <div class="game-meta">{{ g.status }}</div>
+            {% endfor %}
         </div>
-        {% endfor %}
-    </div>
-    {% endif %}
+        {% endif %}
 
+        {% if day.nhl %}
+        <h3 class="league-header">🏒 NHL</h3>
+        <div class="games-list">
+            {% for g in day.nhl %}
+            <div class="game-card upcoming">
+                <div class="game-teams">
+                    <span>{{ g.away_abbr }}</span>
+                    <span class="game-at">@</span>
+                    <span>{{ g.home_abbr }}</span>
+                </div>
+                <div class="game-meta">{{ g.status }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if not day.nba and not day.nhl %}
+        <div class="empty-state"><p>No playoff games scheduled.</p></div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <script>
+    function selectDay(dateKey, btn) {
+        document.querySelectorAll('.day-games').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.day-tab').forEach(el => el.classList.remove('active'));
+        document.getElementById('day-' + dateKey).style.display = 'block';
+        btn.classList.add('active');
+    }
+    </script>
     {% endif %}
 </div>
 
