@@ -1,5 +1,16 @@
 // draft.js — Live draft real-time client using Supabase Realtime
 
+async function undoLastPick() {
+    if (!confirm("Undo the most recent pick? The member whose pick is undone will be up again.")) return;
+    const resp = await fetch(`/pool/${POOL_ID}/draft/undo`, { method: "POST" });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const data = await resp.json().catch(() => ({}));
+        alert(data.error || "Failed to undo pick");
+    }
+}
+
 async function startDraft() {
     const resp = await fetch(`/pool/${POOL_ID}/draft/start`, { method: "POST" });
     if (resp.ok) {

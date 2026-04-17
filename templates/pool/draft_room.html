@@ -81,7 +81,12 @@
     {% endif %}
 
     <!-- Draft log -->
-    <h2 class="section-title">Draft Log</h2>
+    <div class="draft-log-header">
+        <h2 class="section-title">Draft Log</h2>
+        {% if pool.draft_status == 'active' and pool.creator_id == session.get('user_id') and picks %}
+        <button class="btn btn-secondary btn-sm" id="undo-pick-btn" onclick="undoLastPick()">Undo last pick</button>
+        {% endif %}
+    </div>
     <div class="draft-log" id="draft-log">
         {% for pick in picks %}
         <div class="pick-entry">

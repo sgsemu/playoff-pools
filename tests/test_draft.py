@@ -159,6 +159,60 @@ def test_order_members_nulls_sorted_by_joined_at_after_positioned():
 
 
 @patch("routes.draft.get_service_client")
+def test_undo_last_pick_happy_path(mock_sb, authed_client):
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+
+    pool = _mock_pool(draft_status="active")
+    mock_table.select.return_value.eq.return_value.execute.return_value.data = [pool]
+    mock_table.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+        {"id": "pick-3", "pick_order": 3},
+        {"id": "pick-2", "pick_order": 2},
+        {"id": "pick-1", "pick_order": 1},
+    ]
+    mock_table.delete.return_value.eq.return_value.execute.return_value.data = [{}]
+
+    resp = authed_client.post("/pool/pool-1/draft/undo")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"success": True, "undone_pick_order": 3}
+    delete_calls = mock_table.delete.return_value.eq.call_args_list
+    assert delete_calls[0][0] == ("id", "pick-3")
+
+
+@patch("routes.draft.get_service_client")
+def test_undo_last_pick_rejects_non_creator(mock_sb, authed_client):
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+    pool = _mock_pool(draft_status="active")
+    pool["creator_id"] = "someone-else"
+    mock_table.select.return_value.eq.return_value.execute.return_value.data = [pool]
+
+    resp = authed_client.post("/pool/pool-1/draft/undo")
+    assert resp.status_code == 403
+
+
+@patch("routes.draft.get_service_client")
+def test_undo_last_pick_rejects_inactive_draft(mock_sb, authed_client):
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+    mock_table.select.return_value.eq.return_value.execute.return_value.data = [_mock_pool(draft_status="pending")]
+
+    resp = authed_client.post("/pool/pool-1/draft/undo")
+    assert resp.status_code == 409
+
+
+@patch("routes.draft.get_service_client")
+def test_undo_last_pick_rejects_when_no_picks(mock_sb, authed_client):
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+    mock_table.select.return_value.eq.return_value.execute.return_value.data = [_mock_pool(draft_status="active")]
+    mock_table.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+
+    resp = authed_client.post("/pool/pool-1/draft/undo")
+    assert resp.status_code == 409
+
+
+@patch("routes.draft.get_service_client")
 def test_set_draft_order_happy_path(mock_sb, authed_client):
     mock_table = MagicMock()
     mock_sb.return_value.table.return_value = mock_table

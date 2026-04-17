@@ -173,6 +173,33 @@ def start_draft(pool_id):
     return jsonify({"success": True})
 
 
+@draft_bp.route("/pool/<pool_id>/draft/undo", methods=["POST"])
+@login_required
+def undo_last_pick(pool_id):
+    sb = get_service_client()
+    pool = sb.table("pools").select("*").eq("id", pool_id).execute().data
+    if not pool:
+        return jsonify({"error": "Pool not found"}), 404
+    pool = pool[0]
+
+    if pool["creator_id"] != session["user_id"]:
+        return jsonify({"error": "Only the creator can undo picks"}), 403
+
+    if pool["draft_status"] != "active":
+        return jsonify({"error": "Draft is not active"}), 409
+
+    picks = sb.table("draft_picks").select("*").eq(
+        "pool_id", pool_id
+    ).order("pick_order", desc=True).execute().data
+
+    if not picks:
+        return jsonify({"error": "No picks to undo"}), 409
+
+    last = picks[0]
+    sb.table("draft_picks").delete().eq("id", last["id"]).execute()
+    return jsonify({"success": True, "undone_pick_order": last["pick_order"]})
+
+
 @draft_bp.route("/pool/<pool_id>/draft/order", methods=["POST"])
 @login_required
 def set_draft_order(pool_id):
