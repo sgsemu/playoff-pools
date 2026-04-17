@@ -7,10 +7,31 @@
         <span class="badge badge-{{ pool.draft_status }}">{{ pool.draft_status }}</span>
     </div>
 
-    {% if pool.draft_status == 'pending' and pool.creator_id == session.get('user_id') %}
-    <button class="btn btn-primary" id="start-draft-btn" onclick="startDraft()">Start Draft</button>
-    {% elif pool.draft_status == 'pending' %}
-    <div class="empty-state"><p>Waiting for the pool creator to start the draft...</p></div>
+    {% if pool.draft_status == 'pending' %}
+    {% set is_creator = pool.creator_id == session.get('user_id') %}
+    <section class="draft-order-section">
+        <h2 class="section-title">Draft Order</h2>
+        {% if is_creator %}
+        <p class="draft-order-hint">Drag members to set the order. New members who join later will be appended.</p>
+        {% endif %}
+        <ol class="draft-order-list" id="draft-order-list" data-editable="{{ 'true' if is_creator else 'false' }}">
+            {% for m in members %}
+            <li class="draft-order-item"
+                data-member-id="{{ m.id }}"
+                draggable="{{ 'true' if is_creator else 'false' }}">
+                <span class="draft-order-num">{{ loop.index }}</span>
+                <span class="draft-order-name">{{ m.users.display_name }}</span>
+                {% if is_creator %}<span class="draft-order-handle" aria-hidden="true">⋮⋮</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+        <div class="draft-order-error" id="draft-order-error" hidden></div>
+        {% if is_creator %}
+        <button class="btn btn-primary" id="start-draft-btn" onclick="startDraft()">Start Draft</button>
+        {% else %}
+        <div class="empty-state"><p>Waiting for the pool creator to start the draft...</p></div>
+        {% endif %}
+    </section>
     {% endif %}
 
     {% if pool.draft_status == 'active' %}

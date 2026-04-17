@@ -37,6 +37,93 @@ function appendPick(pickOrder, league, teamName) {
     log.prepend(entry);
 }
 
+// --- Manual draft order (pre-start, creator only) ---
+(function initDraftOrder() {
+    const list = document.getElementById("draft-order-list");
+    if (!list || list.dataset.editable !== "true") return;
+
+    const errorEl = document.getElementById("draft-order-error");
+    let dragged = null;
+    let snapshot = null;
+
+    function currentIds() {
+        return Array.from(list.querySelectorAll(".draft-order-item"))
+            .map((el) => el.dataset.memberId);
+    }
+
+    function renumber() {
+        list.querySelectorAll(".draft-order-item").forEach((el, i) => {
+            const num = el.querySelector(".draft-order-num");
+            if (num) num.textContent = String(i + 1);
+        });
+    }
+
+    function showError(msg) {
+        if (!errorEl) return;
+        errorEl.textContent = msg;
+        errorEl.hidden = false;
+    }
+
+    function clearError() {
+        if (!errorEl) return;
+        errorEl.textContent = "";
+        errorEl.hidden = true;
+    }
+
+    function restoreSnapshot() {
+        if (!snapshot) return;
+        snapshot.forEach((el) => list.appendChild(el));
+        renumber();
+    }
+
+    async function persist(memberIds) {
+        try {
+            const resp = await fetch(`/pool/${POOL_ID}/draft/order`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ member_ids: memberIds }),
+            });
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                showError(data.error || "Failed to save draft order");
+                restoreSnapshot();
+                return;
+            }
+            clearError();
+        } catch (e) {
+            showError("Network error saving draft order");
+            restoreSnapshot();
+        }
+    }
+
+    list.addEventListener("dragstart", (e) => {
+        const item = e.target.closest(".draft-order-item");
+        if (!item) return;
+        dragged = item;
+        snapshot = Array.from(list.querySelectorAll(".draft-order-item"));
+        item.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+    });
+
+    list.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (!dragged) return;
+        const target = e.target.closest(".draft-order-item");
+        if (!target || target === dragged) return;
+        const rect = target.getBoundingClientRect();
+        const after = e.clientY > rect.top + rect.height / 2;
+        target.parentNode.insertBefore(dragged, after ? target.nextSibling : target);
+    });
+
+    list.addEventListener("dragend", () => {
+        if (!dragged) return;
+        dragged.classList.remove("dragging");
+        dragged = null;
+        renumber();
+        persist(currentIds());
+    });
+})();
+
 // Supabase Realtime subscription for live updates
 if (typeof SUPABASE_URL !== "undefined" && SUPABASE_URL) {
     const { createClient } = supabase;
