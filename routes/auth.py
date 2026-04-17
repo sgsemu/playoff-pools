@@ -30,7 +30,8 @@ def register():
     user = result.data[0]
     session["user_id"] = user["id"]
     session["display_name"] = user["display_name"]
-    return redirect("/dashboard")
+    pending = session.pop("pending_invite", None)
+    return redirect(f"/join/{pending}" if pending else "/dashboard")
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -54,7 +55,8 @@ def login():
 
     session["user_id"] = user["id"]
     session["display_name"] = user["display_name"]
-    return redirect("/dashboard")
+    pending = session.pop("pending_invite", None)
+    return redirect(f"/join/{pending}" if pending else "/dashboard")
 
 
 @auth_bp.route("/logout")

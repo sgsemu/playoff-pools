@@ -134,8 +134,11 @@ def pool_home(pool_id):
 
 
 @pools_bp.route("/join/<invite_code>")
-@login_required
 def join_pool(invite_code):
+    if "user_id" not in session:
+        session["pending_invite"] = invite_code
+        return redirect("/register")
+
     sb = get_service_client()
     pools = sb.table("pools").select("*").eq("invite_code", invite_code).execute().data
     if not pools:
