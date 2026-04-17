@@ -65,12 +65,16 @@ def draft_room(pool_id):
     ).order("pick_order").execute().data
 
     all_teams = _get_all_teams(sb)
-    # Build taken set: (league, team_id)
+    team_lookup = {(t["league"], t["id"]): t for t in all_teams}
+    # Build taken set: (league, team_id) and annotate picks with team name/abbr
     taken = set()
     for p in picks:
         league = p.get("league", "nba")
         team_id = p.get("team_id") or p.get("nba_team_id")
         taken.add((league, team_id))
+        team = team_lookup.get((league, team_id))
+        p["team_name"] = team["name"] if team else f"{league.upper()} {team_id}"
+        p["team_abbr"] = team["abbreviation"] if team else str(team_id)
 
     nba_available = [t for t in all_teams if t["league"] == "nba" and ("nba", t["id"]) not in taken]
     nhl_available = [t for t in all_teams if t["league"] == "nhl" and ("nhl", t["id"]) not in taken]

@@ -96,7 +96,7 @@
                 <span class="pick-member">{{ m.users.display_name }}</span>
             {% endfor %}
             <span class="pick-league badge badge-{{ pick.league or 'nba' }}">{{ (pick.league or 'nba') | upper }}</span>
-            <span class="pick-team">{{ pick.team_id or pick.nba_team_id }}</span>
+            <span class="pick-team">{{ pick.team_name }}</span>
         </div>
         {% endfor %}
     </div>
