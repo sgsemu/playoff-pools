@@ -44,12 +44,14 @@ CREATE TABLE pool_members (
     user_id UUID NOT NULL REFERENCES users(id),
     role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('creator', 'member')),
     total_points NUMERIC NOT NULL DEFAULT 0,
+    draft_position INT NULL,
     joined_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(pool_id, user_id)
 );
 
 CREATE INDEX idx_pool_members_pool ON pool_members(pool_id);
 CREATE INDEX idx_pool_members_user ON pool_members(user_id);
+CREATE INDEX idx_pool_members_draft_position ON pool_members(pool_id, draft_position);
 
 -- Draft Picks (pool type: draft)
 CREATE TABLE draft_picks (
