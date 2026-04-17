@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, jsonify, session
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.scoring import calculate_team_scores, calculate_salary_cap_scores
+from services.espn_api import fetch_upcoming_games
 
 scores_bp = Blueprint("scores", __name__)
 
@@ -35,8 +36,11 @@ def game_scores(pool_id):
         m["users"] = user[0] if user else {"display_name": "Unknown"}
     member_map = {m["id"]: m for m in raw_members}
 
+    upcoming = fetch_upcoming_games(days=7)
+
     return render_template("pool/scores.html",
-        pool=pool, games=games, standings=standings, member_map=member_map)
+        pool=pool, games=games, standings=standings, member_map=member_map,
+        upcoming=upcoming)
 
 
 def recalculate_standings(pool_id):

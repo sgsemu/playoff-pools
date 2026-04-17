@@ -1,8 +1,45 @@
 import requests
+from datetime import date, timedelta
 
 ESPN_NBA_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 ESPN_NHL_BASE = "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl"
 ESPN_BASE = ESPN_NBA_BASE  # backward compat
+
+
+def fetch_upcoming_games(days=7):
+    """Fetch upcoming playoff games for NBA and NHL over the next N days."""
+    nba_games = []
+    nhl_games = []
+
+    for d in range(days):
+        dt = (date.today() + timedelta(days=d)).strftime("%Y%m%d")
+        for base, league, bucket in [
+            (ESPN_NBA_BASE, "nba", nba_games),
+            (ESPN_NHL_BASE, "nhl", nhl_games),
+        ]:
+            try:
+                resp = requests.get(f"{base}/scoreboard", params={"dates": dt}, timeout=10)
+                resp.raise_for_status()
+                for event in resp.json().get("events", []):
+                    if event.get("season", {}).get("type", 0) != 3:
+                        continue
+                    comp = event["competitions"][0]
+                    if comp["status"]["type"]["completed"]:
+                        continue
+                    home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
+                    away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
+                    bucket.append({
+                        "home_name": home["team"].get("displayName", "?"),
+                        "home_abbr": home["team"].get("abbreviation", "?"),
+                        "away_name": away["team"].get("displayName", "?"),
+                        "away_abbr": away["team"].get("abbreviation", "?"),
+                        "date": event["date"],
+                        "status": comp["status"]["type"]["shortDetail"],
+                    })
+            except Exception:
+                continue
+
+    return {"nba": nba_games, "nhl": nhl_games}
 
 
 def fetch_scoreboard(date=None):

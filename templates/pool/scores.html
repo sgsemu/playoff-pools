@@ -40,6 +40,44 @@
     {% else %}
     <div class="empty-state"><p>No games yet.</p></div>
     {% endif %}
+
+    <!-- Upcoming Games -->
+    {% if upcoming and (upcoming.nba or upcoming.nhl) %}
+    <h2 class="section-title">Upcoming Games</h2>
+
+    {% if upcoming.nba %}
+    <h3 class="league-header">🏀 NBA</h3>
+    <div class="games-list">
+        {% for g in upcoming.nba %}
+        <div class="game-card upcoming">
+            <div class="game-teams">
+                <span>{{ g.away_abbr }}</span>
+                <span class="game-at">@</span>
+                <span>{{ g.home_abbr }}</span>
+            </div>
+            <div class="game-meta">{{ g.status }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if upcoming.nhl %}
+    <h3 class="league-header">🏒 NHL</h3>
+    <div class="games-list">
+        {% for g in upcoming.nhl %}
+        <div class="game-card upcoming">
+            <div class="game-teams">
+                <span>{{ g.away_abbr }}</span>
+                <span class="game-at">@</span>
+                <span>{{ g.home_abbr }}</span>
+            </div>
+            <div class="game-meta">{{ g.status }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% endif %}
 </div>
 
 <a href="/pool/{{ pool.id }}" class="btn btn-secondary" style="margin-top:16px;">Back to Pool</a>
