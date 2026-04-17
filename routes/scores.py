@@ -18,12 +18,14 @@ def game_scores(pool_id):
     pool = pool[0]
 
     games = sb.table("game_results").select("*").order("game_date", desc=True).execute().data
-    teams = {t["id"]: t for t in sb.table("nba_teams").select("*").execute().data}
+    nba_teams = {t["id"]: t for t in sb.table("nba_teams").select("*").execute().data}
+    nhl_teams = {t["id"]: t for t in sb.table("nhl_teams").select("*").execute().data}
+    all_teams = {**nba_teams, **nhl_teams}
 
     # Annotate games with team names
     for g in games:
-        g["home_name"] = teams.get(g["home_team_id"], {}).get("name", "?")
-        g["away_name"] = teams.get(g["away_team_id"], {}).get("name", "?")
+        g["home_name"] = all_teams.get(g["home_team_id"], {}).get("name", "?")
+        g["away_name"] = all_teams.get(g["away_team_id"], {}).get("name", "?")
 
     standings = sb.table("pool_standings").select("*").eq(
         "pool_id", pool_id
@@ -37,11 +39,26 @@ def game_scores(pool_id):
         m["users"] = user[0] if user else {"display_name": "Unknown"}
     member_map = {m["id"]: m for m in raw_members}
 
+    # Build member → teams mapping
+    picks = sb.table("draft_picks").select("*").eq("pool_id", pool_id).order("pick_order").execute().data
+    member_teams = {}
+    for p in picks:
+        tid = p.get("team_id") or p.get("nba_team_id")
+        league = p.get("league", "nba")
+        team = nba_teams.get(tid) if league == "nba" else nhl_teams.get(tid)
+        if team:
+            member_teams.setdefault(p["member_id"], []).append({
+                "name": team["name"],
+                "abbreviation": team["abbreviation"],
+                "league": league,
+                "wins": team.get("playoff_wins", 0),
+            })
+
     upcoming = fetch_upcoming_games(days=7)
 
     return render_template("pool/scores.html",
         pool=pool, games=games, standings=standings, member_map=member_map,
-        upcoming=upcoming)
+        member_teams=member_teams, upcoming=upcoming)
 
 
 @scores_bp.route("/pool/<pool_id>/scores/refresh", methods=["POST"])

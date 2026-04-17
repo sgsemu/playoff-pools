@@ -38,6 +38,17 @@
     </div>
 
 <script>
+function toggleTeams(id) {
+    var row = document.getElementById(id);
+    var arrow = row.previousElementSibling.querySelector('.expand-icon');
+    if (row.style.display === 'none') {
+        row.style.display = 'table-row';
+        arrow.textContent = '▾';
+    } else {
+        row.style.display = 'none';
+        arrow.textContent = '▸';
+    }
+}
 function deletePool() {
     if (!confirm("Delete this pool and all its data? This cannot be undone.")) return;
     fetch("/api/pool/{{ pool.id }}", { method: "DELETE" })
@@ -63,14 +74,31 @@ function deletePool() {
             </thead>
             <tbody>
                 {% for s in standings %}
-                <tr class="{% if s.rank <= 2 %}payout-row{% endif %}">
+                <tr class="{% if s.rank <= 2 %}payout-row{% endif %} standings-row" onclick="toggleTeams('teams-{{ loop.index }}')">
                     <td>{{ s.rank }}</td>
                     <td>
                         {% for m in members if m.id == s.member_id %}
                             {{ m.users.display_name }}
                         {% endfor %}
+                        <span class="expand-icon">▸</span>
                     </td>
                     <td>{{ s.total_points }}</td>
+                </tr>
+                <tr class="teams-detail" id="teams-{{ loop.index }}" style="display:none;">
+                    <td colspan="3">
+                        <div class="member-teams-list">
+                            {% for t in member_teams.get(s.member_id, []) %}
+                            <div class="member-team-row">
+                                <span class="team-league-badge {{ t.league }}">{{ t.league | upper }}</span>
+                                <span class="team-detail-name">{{ t.abbreviation }} {{ t.name }}</span>
+                                <span class="team-detail-wins">{{ t.wins }}W</span>
+                            </div>
+                            {% endfor %}
+                            {% if not member_teams.get(s.member_id) %}
+                            <div class="member-team-row"><span class="team-detail-name">No teams drafted yet</span></div>
+                            {% endif %}
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

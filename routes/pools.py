@@ -130,7 +130,25 @@ def pool_home(pool_id):
         "pool_id", pool_id
     ).order("rank").execute().data
 
-    return render_template("pool/home.html", pool=pool, members=members, standings=standings)
+    # Build member → teams mapping for standings detail
+    picks = sb.table("draft_picks").select("*").eq("pool_id", pool_id).order("pick_order").execute().data
+    nba_teams = {t["id"]: t for t in sb.table("nba_teams").select("*").execute().data}
+    nhl_teams = {t["id"]: t for t in sb.table("nhl_teams").select("*").execute().data}
+    member_teams = {}
+    for p in picks:
+        tid = p.get("team_id") or p.get("nba_team_id")
+        league = p.get("league", "nba")
+        team = nba_teams.get(tid) if league == "nba" else nhl_teams.get(tid)
+        if team:
+            member_teams.setdefault(p["member_id"], []).append({
+                "name": team["name"],
+                "abbreviation": team["abbreviation"],
+                "league": league,
+                "wins": team.get("playoff_wins", 0),
+            })
+
+    return render_template("pool/home.html", pool=pool, members=members,
+        standings=standings, member_teams=member_teams)
 
 
 @pools_bp.route("/join/<invite_code>")
