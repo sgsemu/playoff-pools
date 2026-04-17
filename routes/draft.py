@@ -53,6 +53,7 @@ def draft_room(pool_id):
     raw_members = sb.table("pool_members").select("*").eq(
         "pool_id", pool_id
     ).order("joined_at").execute().data
+    raw_members = _order_members_for_draft(raw_members)
     members = []
     for m in raw_members:
         user = sb.table("users").select("display_name").eq("id", m["user_id"]).execute().data
