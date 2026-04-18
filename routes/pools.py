@@ -126,9 +126,19 @@ def pool_home(pool_id):
         m["users"] = user_data[0] if user_data else {"display_name": "Unknown", "email": ""}
         members.append(m)
 
-    standings = sb.table("pool_standings").select("*").eq(
+    db_standings = sb.table("pool_standings").select("*").eq(
         "pool_id", pool_id
-    ).order("rank").execute().data
+    ).execute().data
+    standings_by_member = {s["member_id"]: s for s in db_standings}
+
+    standings = []
+    for m in sorted(members, key=lambda m: m["users"]["display_name"].lower()):
+        s = standings_by_member.get(m["id"])
+        standings.append({
+            "member_id": m["id"],
+            "rank": s["rank"] if s else None,
+            "total_points": s["total_points"] if s else 0,
+        })
 
     # Build member → teams mapping for standings detail
     picks = sb.table("draft_picks").select("*").eq("pool_id", pool_id).order("pick_order").execute().data

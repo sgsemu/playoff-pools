@@ -60,32 +60,8 @@ function deletePool() {
 }
 </script>
 
-    <!-- Rosters (visible once the draft is complete) -->
-    {% if pool.draft_status == 'complete' and member_teams %}
-    <h2 class="section-title">Rosters</h2>
-    <div class="rosters-grid">
-        {% for m in members %}
-        <div class="roster-card">
-            <h3 class="roster-card-member">{{ m.users.display_name }}</h3>
-            <ul class="roster-card-teams">
-                {% for t in member_teams.get(m.id, []) %}
-                <li>
-                    <span class="team-league-badge {{ t.league }}">{{ t.league | upper }}</span>
-                    <span class="roster-card-team">{{ t.abbreviation }} {{ t.name }}</span>
-                    <span class="roster-card-wins">{{ t.wins }}W</span>
-                </li>
-                {% else %}
-                <li class="roster-empty">No teams</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-
     <!-- Standings -->
     <h2 class="section-title">Standings</h2>
-    {% if standings %}
     <div class="standings-table-wrapper">
         <table class="standings-table">
             <thead>
@@ -97,8 +73,8 @@ function deletePool() {
             </thead>
             <tbody>
                 {% for s in standings %}
-                <tr class="{% if s.rank <= 2 %}payout-row{% endif %} standings-row" onclick="toggleTeams('teams-{{ loop.index }}')">
-                    <td>{{ s.rank }}</td>
+                <tr class="{% if s.rank and s.rank <= 2 %}payout-row{% endif %} standings-row" onclick="toggleTeams('teams-{{ loop.index }}')">
+                    <td>{{ s.rank if s.rank is not none else '—' }}</td>
                     <td>
                         {% for m in members if m.id == s.member_id %}
                             {{ m.users.display_name }}
@@ -127,11 +103,6 @@ function deletePool() {
             </tbody>
         </table>
     </div>
-    {% else %}
-    <div class="empty-state">
-        <p>No standings yet. Standings will appear once games start and scoring is calculated.</p>
-    </div>
-    {% endif %}
 
     <!-- Members -->
     <h2 class="section-title">Members ({{ members | length }})</h2>
