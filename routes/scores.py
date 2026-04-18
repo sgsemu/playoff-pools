@@ -20,12 +20,13 @@ def game_scores(pool_id):
     games = sb.table("game_results").select("*").order("game_date", desc=True).execute().data
     nba_teams = {t["id"]: t for t in sb.table("nba_teams").select("*").execute().data}
     nhl_teams = {t["id"]: t for t in sb.table("nhl_teams").select("*").execute().data}
-    all_teams = {**nba_teams, **nhl_teams}
 
-    # Annotate games with team names
+    # Annotate games with team names — ESPN NBA and NHL team ids overlap,
+    # so pick the per-league dict off each row's league column.
     for g in games:
-        g["home_name"] = all_teams.get(g["home_team_id"], {}).get("name", "?")
-        g["away_name"] = all_teams.get(g["away_team_id"], {}).get("name", "?")
+        teams = nba_teams if g.get("league", "nba") == "nba" else nhl_teams
+        g["home_name"] = teams.get(g["home_team_id"], {}).get("name", "?")
+        g["away_name"] = teams.get(g["away_team_id"], {}).get("name", "?")
 
     standings = sb.table("pool_standings").select("*").eq(
         "pool_id", pool_id
