@@ -40,11 +40,14 @@ def game_scores(pool_id):
         m["users"] = user[0] if user else {"display_name": "Unknown"}
     member_map = {m["id"]: m for m in raw_members}
 
-    # Count wins from game_results (same source as scoring engine)
+    # Count wins from game_results (same source as scoring engine).
+    # Key by (league, team_id) because NBA and NHL ESPN ids overlap.
     team_wins = {}
     for g in games:
+        league = g.get("league", "nba")
         winner_id = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
-        team_wins[winner_id] = team_wins.get(winner_id, 0) + 1
+        key = (league, winner_id)
+        team_wins[key] = team_wins.get(key, 0) + 1
 
     # Build member → teams mapping
     picks = sb.table("draft_picks").select("*").eq("pool_id", pool_id).order("pick_order").execute().data
@@ -58,7 +61,7 @@ def game_scores(pool_id):
                 "name": team["name"],
                 "abbreviation": team["abbreviation"],
                 "league": league,
-                "wins": team_wins.get(tid, 0),
+                "wins": team_wins.get((league, tid), 0),
             })
 
     upcoming = fetch_upcoming_games(days=7)
@@ -136,25 +139,29 @@ def recalculate_standings(pool_id):
     members = sb.table("pool_members").select("*").eq("pool_id", pool_id).execute().data
 
     if pool["type"] in ("draft", "auction"):
-        # Build team_wins and series_wins from game_results
+        # Build team_wins from game_results. Key by (league, team_id) because
+        # NBA and NHL ESPN ids overlap.
         games = sb.table("game_results").select("*").execute().data
         team_wins = {}
         for g in games:
+            league = g.get("league", "nba")
             winner_id = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
-            team_wins[winner_id] = team_wins.get(winner_id, 0) + 1
+            key = (league, winner_id)
+            team_wins[key] = team_wins.get(key, 0) + 1
 
         # Series wins: check if any team has 4 wins in a round (simplified)
         series_wins = {}  # round -> [team_ids]
         # TODO: proper series tracking would need game grouping by round/series
 
-        # Build member_teams from draft_picks or auction_bids
-        # Use team_id if available, fall back to nba_team_id for backward compat
+        # Build member_teams from draft_picks or auction_bids. Values are
+        # (league, team_id) tuples so lookups match team_wins keys.
         if pool["type"] == "draft":
             picks = sb.table("draft_picks").select("*").eq("pool_id", pool_id).execute().data
             member_teams = {}
             for p in picks:
                 tid = p.get("team_id") or p.get("nba_team_id")
-                member_teams.setdefault(p["member_id"], []).append(tid)
+                league = p.get("league", "nba")
+                member_teams.setdefault(p["member_id"], []).append((league, tid))
         else:
             bids = sb.table("auction_bids").select("*").eq(
                 "pool_id", pool_id
@@ -162,7 +169,8 @@ def recalculate_standings(pool_id):
             member_teams = {}
             for b in bids:
                 tid = b.get("team_id") or b.get("nba_team_id")
-                member_teams.setdefault(b["member_id"], []).append(tid)
+                league = b.get("league", "nba")
+                member_teams.setdefault(b["member_id"], []).append((league, tid))
 
         scores = calculate_team_scores(pool["scoring_config"], team_wins, member_teams, series_wins)
 

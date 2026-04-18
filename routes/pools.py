@@ -145,12 +145,15 @@ def pool_home(pool_id):
     nba_teams = {t["id"]: t for t in sb.table("nba_teams").select("*").execute().data}
     nhl_teams = {t["id"]: t for t in sb.table("nhl_teams").select("*").execute().data}
 
-    # Count wins from game_results (same source as scoring engine)
+    # Count wins from game_results. Key by (league, team_id) because NBA and
+    # NHL ESPN ids overlap.
     all_games = sb.table("game_results").select("*").execute().data
     team_wins = {}
     for g in all_games:
+        league = g.get("league", "nba")
         winner_id = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
-        team_wins[winner_id] = team_wins.get(winner_id, 0) + 1
+        key = (league, winner_id)
+        team_wins[key] = team_wins.get(key, 0) + 1
 
     member_teams = {}
     for p in picks:
@@ -162,7 +165,7 @@ def pool_home(pool_id):
                 "name": team["name"],
                 "abbreviation": team["abbreviation"],
                 "league": league,
-                "wins": team_wins.get(tid, 0),
+                "wins": team_wins.get((league, tid), 0),
             })
 
     return render_template("pool/home.html", pool=pool, members=members,
