@@ -271,3 +271,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .finalize-hint { color: #666; font-size: 0.85rem; }
 .btn-danger { background: #b00020; color: #fff; }
 .btn-danger:hover { background: #800018; }
+
+/* Post-draft rosters grid (pool home) */
+.rosters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.roster-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; background: #fff; }
+.roster-card-member { margin: 0 0 8px; font-size: 1rem; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+.roster-card-teams { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.roster-card-teams li { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.roster-card-team { flex: 1; }
+.roster-card-wins { color: #666; font-weight: 600; font-size: 0.85rem; }

@@ -296,6 +296,13 @@ def finalize_draft(pool_id):
         return err
 
     sb.table("pools").update({"draft_status": "complete"}).eq("id", pool_id).execute()
+
+    from routes.scores import recalculate_standings
+    try:
+        recalculate_standings(pool_id)
+    except Exception:
+        pass
+
     return jsonify({"success": True})
 
 

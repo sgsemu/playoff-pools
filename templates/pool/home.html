@@ -60,6 +60,29 @@ function deletePool() {
 }
 </script>
 
+    <!-- Rosters (visible once the draft is complete) -->
+    {% if pool.draft_status == 'complete' and member_teams %}
+    <h2 class="section-title">Rosters</h2>
+    <div class="rosters-grid">
+        {% for m in members %}
+        <div class="roster-card">
+            <h3 class="roster-card-member">{{ m.users.display_name }}</h3>
+            <ul class="roster-card-teams">
+                {% for t in member_teams.get(m.id, []) %}
+                <li>
+                    <span class="team-league-badge {{ t.league }}">{{ t.league | upper }}</span>
+                    <span class="roster-card-team">{{ t.abbreviation }} {{ t.name }}</span>
+                    <span class="roster-card-wins">{{ t.wins }}W</span>
+                </li>
+                {% else %}
+                <li class="roster-empty">No teams</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Standings -->
     <h2 class="section-title">Standings</h2>
     {% if standings %}

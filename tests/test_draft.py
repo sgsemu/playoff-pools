@@ -280,8 +280,9 @@ def test_remove_pick_happy_path(mock_sb, authed_client):
     assert resp.status_code == 200
 
 
+@patch("routes.scores.recalculate_standings")
 @patch("routes.draft.get_service_client")
-def test_finalize_draft_happy_path(mock_sb, authed_client):
+def test_finalize_draft_happy_path(mock_sb, mock_recalc, authed_client):
     mock_table = MagicMock()
     mock_sb.return_value.table.return_value = mock_table
     mock_table.select.return_value.eq.return_value.execute.return_value.data = [_mock_pool(draft_status="active")]
@@ -290,6 +291,7 @@ def test_finalize_draft_happy_path(mock_sb, authed_client):
     resp = authed_client.post("/pool/pool-1/draft/finalize")
     assert resp.status_code == 200
     mock_table.update.assert_called_with({"draft_status": "complete"})
+    mock_recalc.assert_called_once_with("pool-1")
 
 
 @patch("routes.draft.get_service_client")
