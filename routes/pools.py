@@ -132,11 +132,15 @@ def pool_home(pool_id):
     standings_by_member = {s["member_id"]: s for s in db_standings}
 
     standings = []
-    for m in sorted(members, key=lambda m: m["users"]["display_name"].lower()):
+    sort_key = lambda m: (
+        -(standings_by_member.get(m["id"], {}).get("total_points") or 0),
+        m["users"]["display_name"].lower(),
+    )
+    for rank, m in enumerate(sorted(members, key=sort_key), 1):
         s = standings_by_member.get(m["id"])
         standings.append({
             "member_id": m["id"],
-            "rank": s["rank"] if s else None,
+            "rank": rank,
             "total_points": s["total_points"] if s else 0,
         })
 
