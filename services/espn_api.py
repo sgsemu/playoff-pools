@@ -56,6 +56,36 @@ def fetch_upcoming_games(days=7):
     return by_date
 
 
+def fetch_live_games():
+    """Return in-progress playoff games with current scores and status."""
+    out = []
+    for base, league in [(ESPN_NBA_BASE, "nba"), (ESPN_NHL_BASE, "nhl")]:
+        try:
+            r = requests.get(f"{base}/scoreboard", timeout=8).json()
+        except Exception:
+            continue
+        for ev in r.get("events", []):
+            if ev.get("season", {}).get("type", 0) != 3:
+                continue
+            comp = ev["competitions"][0]
+            s = comp["status"]["type"]
+            if s.get("state") != "in":
+                continue
+            home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
+            away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
+            out.append({
+                "league": league,
+                "status": s.get("shortDetail", ""),
+                "home_abbr": home["team"].get("abbreviation", "?"),
+                "home_name": home["team"].get("displayName", "?"),
+                "home_score": int(home["score"]) if home.get("score") else 0,
+                "away_abbr": away["team"].get("abbreviation", "?"),
+                "away_name": away["team"].get("displayName", "?"),
+                "away_score": int(away["score"]) if away.get("score") else 0,
+            })
+    return out
+
+
 def fetch_scoreboard(date=None):
     url = f"{ESPN_BASE}/scoreboard"
     params = {}

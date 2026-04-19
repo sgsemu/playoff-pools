@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.scoring import calculate_team_scores, calculate_salary_cap_scores
-from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, today_et
+from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, today_et
 
 scores_bp = Blueprint("scores", __name__)
 
@@ -64,10 +64,17 @@ def game_scores(pool_id):
             })
 
     upcoming = fetch_upcoming_games(days=7)
+    live = fetch_live_games()
 
     return render_template("pool/scores.html",
         pool=pool, games=games, standings=standings, member_map=member_map,
-        member_teams=member_teams, upcoming=upcoming)
+        member_teams=member_teams, upcoming=upcoming, live=live)
+
+
+@scores_bp.route("/pool/<pool_id>/scores/live.json")
+@login_required
+def live_scores_json(pool_id):
+    return jsonify({"live": fetch_live_games()})
 
 
 @scores_bp.route("/pool/<pool_id>/scores/refresh", methods=["POST"])

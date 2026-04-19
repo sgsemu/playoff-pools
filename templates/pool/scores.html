@@ -46,6 +46,24 @@
     </div>
     {% endif %}
 
+    <!-- Live games -->
+    <div id="live-section" style="{% if not live %}display:none;{% endif %}">
+        <h2 class="section-title">Live <span class="live-dot">●</span></h2>
+        <div class="games-list" id="live-games">
+            {% for g in live %}
+            <div class="game-card live">
+                <div class="game-teams">
+                    <span class="team-league-badge {{ g.league }}">{{ g.league | upper }}</span>
+                    <span>{{ g.away_abbr }} {{ g.away_score }}</span>
+                    <span class="game-at">@</span>
+                    <span>{{ g.home_abbr }} {{ g.home_score }}</span>
+                </div>
+                <div class="game-meta">{{ g.status }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
     <!-- Game results -->
     <h2 class="section-title">Recent Games</h2>
     {% if games %}
@@ -133,6 +151,30 @@
         document.getElementById('day-' + dateKey).style.display = 'block';
         btn.classList.add('active');
     }
+
+    async function refreshLive() {
+        try {
+            const r = await fetch('/pool/{{ pool.id }}/scores/live.json', { cache: 'no-store' });
+            if (!r.ok) return;
+            const { live } = await r.json();
+            const section = document.getElementById('live-section');
+            const list = document.getElementById('live-games');
+            if (!live.length) { section.style.display = 'none'; return; }
+            section.style.display = '';
+            list.innerHTML = live.map(g => `
+                <div class="game-card live">
+                    <div class="game-teams">
+                        <span class="team-league-badge ${g.league}">${g.league.toUpperCase()}</span>
+                        <span>${g.away_abbr} ${g.away_score}</span>
+                        <span class="game-at">@</span>
+                        <span>${g.home_abbr} ${g.home_score}</span>
+                    </div>
+                    <div class="game-meta">${g.status}</div>
+                </div>
+            `).join('');
+        } catch (e) { /* keep last render */ }
+    }
+    setInterval(refreshLive, 45000);
     </script>
     {% endif %}
 </div>
