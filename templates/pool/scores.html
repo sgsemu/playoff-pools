@@ -16,16 +16,17 @@
     </div>
     {% endif %}
 
-    {% if standings %}
-    <div class="standings-table-wrapper" id="standings-wrapper">
-        {% include "pool/_standings_table.html" %}
-    </div>
-    {% endif %}
-
     <h2 class="section-title">Games</h2>
     <div id="calendar-wrapper">
         {% include "pool/_calendar.html" %}
     </div>
+
+    {% if standings %}
+    <h2 class="section-title">Standings</h2>
+    <div class="standings-table-wrapper" id="standings-wrapper">
+        {% include "pool/_standings_table.html" %}
+    </div>
+    {% endif %}
 
     <script>
     function toggleTeams(id) {
