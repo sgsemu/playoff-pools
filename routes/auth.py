@@ -28,6 +28,7 @@ def register():
     }).execute()
 
     user = result.data[0]
+    session.permanent = True
     session["user_id"] = user["id"]
     session["display_name"] = user["display_name"]
     pending = session.pop("pending_invite", None)
@@ -53,6 +54,7 @@ def login():
         flash("Invalid email or password.", "error")
         return render_template("auth/login.html"), 200
 
+    session.permanent = True
     session["user_id"] = user["id"]
     session["display_name"] = user["display_name"]
     pending = session.pop("pending_invite", None)
