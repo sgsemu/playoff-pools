@@ -13,13 +13,13 @@
 
     {% if playoff_day or quote %}
     <div class="pool-chrome">
-        {% if playoff_day %}<span class="playoff-day-badge">🧔 Playoffs Day {{ playoff_day }}</span>{% endif %}
-        {% if quote %}<div class="playoff-quote">"{{ quote.text }}"<span class="author">— {{ quote.author }}</span></div>{% endif %}
+        {% if playoff_day %}<span class="playoff-day-badge">🧔 Day {{ playoff_day }}</span>{% endif %}
+        {% if quote %}<span class="playoff-quote">"{{ quote.text }}"<span class="author">— {{ quote.author }}</span></span>{% endif %}
     </div>
     {% endif %}
 
-    <!-- Invite link (creator only) -->
-    {% if pool.creator_id == session.get('user_id') %}
+    <!-- Invite link: only during pre-draft (nobody joins after the draft closes). -->
+    {% if pool.creator_id == session.get('user_id') and pool.draft_status != 'complete' %}
     <div class="invite-box">
         <label>Invite Link</label>
         <div class="invite-link-row">
@@ -29,7 +29,7 @@
     </div>
     {% endif %}
 
-    <!-- Action buttons -->
+    <!-- Primary action only. Destructive action lives at the page footer. -->
     <div class="pool-actions">
         {% if pool.type in ('draft', 'auction') and pool.draft_status != 'complete' %}
             <a href="/pool/{{ pool.id }}/draft" class="btn btn-primary">
@@ -39,9 +39,6 @@
             <a href="/pool/{{ pool.id }}/roster" class="btn btn-primary">Pick Your Roster</a>
         {% endif %}
         <a href="/pool/{{ pool.id }}/scores" class="btn btn-secondary">Game Results</a>
-        {% if pool.creator_id == session.get('user_id') %}
-        <button onclick="deletePool()" class="btn btn-secondary" style="background:#e74c3c;color:#fff;border-color:#e74c3c">Delete Pool</button>
-        {% endif %}
     </div>
 
 <script>
@@ -83,6 +80,12 @@ function deletePool() {
             {% if m.role == 'creator' %}<span class="badge badge-creator">Creator</span>{% endif %}
         </div>
         {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if pool.creator_id == session.get('user_id') %}
+    <div class="pool-danger-zone">
+        <button type="button" class="danger-link" onclick="deletePool()">Delete pool</button>
     </div>
     {% endif %}
 </div>

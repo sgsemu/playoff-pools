@@ -194,10 +194,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .team-detail-name { flex: 1; color: #ccc; }
 .team-detail-wins { font-weight: 700; color: #4ade80; min-width: 30px; text-align: right; }
 .rank-crown { margin-right: 4px; }
-.pool-chrome { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 16px; }
-.playoff-day-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #9ca3af; background: #1a1a2e; border: 1px solid #333; padding: 3px 10px; border-radius: 999px; width: fit-content; }
-.playoff-quote { font-style: italic; color: #9ca3af; font-size: 13px; max-width: 600px; line-height: 1.4; }
-.playoff-quote .author { color: #6b7280; font-style: normal; margin-left: 6px; font-size: 12px; }
+.pool-chrome { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin: 4px 0 12px; }
+.playoff-day-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #9ca3af; background: #1a1a2e; border: 1px solid #333; padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+.playoff-quote { font-style: italic; color: #9ca3af; font-size: 12px; line-height: 1.4; min-width: 0; }
+.playoff-quote .author { color: #6b7280; font-style: normal; margin-left: 6px; font-size: 11px; }
+.pool-danger-zone { margin-top: 48px; padding-top: 16px; border-top: 1px solid #1f2937; text-align: center; }
+.danger-link { background: none; border: none; color: #6b7280; font-size: 12px; cursor: pointer; padding: 4px 8px; }
+.danger-link:hover { color: #ef4444; text-decoration: underline; }
 @keyframes livePulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.85); } }
 .member-team-row.team-live::before { content: "●"; color: #ef4444; font-size: 10px; animation: livePulse 1.1s ease-in-out infinite; }
 .scores-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
