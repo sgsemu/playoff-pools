@@ -1,3 +1,4 @@
+import time
 from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
@@ -39,6 +40,9 @@ def game_scores(pool_id):
 @scores_bp.route("/pool/<pool_id>/standings.partial")
 @login_required
 def standings_partial(pool_id):
+    # Piggyback an ESPN sync on the standings poll, throttled across viewers
+    # so we don't hammer ESPN or Supabase.
+    maybe_auto_sync(throttle_seconds=120)
     standings, member_teams = build_standings_view(pool_id)
     return render_template("pool/_standings_table.html",
         standings=standings, member_teams=member_teams)
@@ -50,15 +54,11 @@ def live_scores_json(pool_id):
     return jsonify({"live": fetch_live_games()})
 
 
-@scores_bp.route("/pool/<pool_id>/scores/refresh", methods=["POST"])
-@login_required
-def refresh_scores(pool_id):
-    """Manually sync latest game results from ESPN and recalculate standings."""
+def _sync_completed_games():
+    """Fetch ESPN, insert any completed playoff games not already stored,
+    and update team win/loss tallies. Returns the count of newly inserted
+    game_results rows."""
     sb = get_service_client()
-    pool = sb.table("pools").select("id").eq("id", pool_id).execute().data
-    if not pool:
-        return "Pool not found", 404
-
     nba_ids = {t["id"] for t in sb.table("nba_teams").select("id").execute().data}
     nhl_ids = {t["id"] for t in sb.table("nhl_teams").select("id").execute().data}
     new_count = 0
@@ -102,6 +102,48 @@ def refresh_scores(pool_id):
                 pass
             new_count += 1
 
+    return new_count
+
+
+# Process-level throttle so polling doesn't hammer ESPN. Vercel Fluid Compute
+# reuses function instances, so many concurrent requests share this state.
+# Cold starts reset it, which is acceptable — a fresh sync on the first hit
+# after a cold start is exactly what we want.
+_last_auto_sync_at = 0.0
+
+
+def maybe_auto_sync(throttle_seconds=120):
+    """Run ESPN sync at most once per throttle window. Recalcs standings for
+    pools with completed drafts when new games land. Returns new_count."""
+    global _last_auto_sync_at
+    now = time.time()
+    if now - _last_auto_sync_at < throttle_seconds:
+        return 0
+    _last_auto_sync_at = now
+    try:
+        new_count = _sync_completed_games()
+    except Exception:
+        return 0
+    if new_count > 0:
+        sb = get_service_client()
+        for p in sb.table("pools").select("id").eq("draft_status", "complete").execute().data:
+            try:
+                recalculate_standings(p["id"])
+            except Exception:
+                pass
+    return new_count
+
+
+@scores_bp.route("/pool/<pool_id>/scores/refresh", methods=["POST"])
+@login_required
+def refresh_scores(pool_id):
+    """Manually sync latest game results from ESPN and recalculate standings."""
+    sb = get_service_client()
+    pool = sb.table("pools").select("id").eq("id", pool_id).execute().data
+    if not pool:
+        return "Pool not found", 404
+
+    new_count = _sync_completed_games()
     if new_count > 0:
         recalculate_standings(pool_id)
         flash(f"Synced {new_count} new game(s) and updated standings.", "success")
