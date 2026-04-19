@@ -136,12 +136,18 @@ def pool_home(pool_id):
         -(standings_by_member.get(m["id"], {}).get("total_points") or 0),
         m["users"]["display_name"].lower(),
     )
-    for rank, m in enumerate(sorted(members, key=sort_key), 1):
+    # Standard competition ranking (1,1,1,4,...) so tied players share a rank.
+    prev_points = object()
+    prev_rank = 0
+    for i, m in enumerate(sorted(members, key=sort_key), 1):
         s = standings_by_member.get(m["id"])
+        pts = s["total_points"] if s else 0
+        rank = prev_rank if pts == prev_points else i
+        prev_rank, prev_points = rank, pts
         standings.append({
             "member_id": m["id"],
             "rank": rank,
-            "total_points": s["total_points"] if s else 0,
+            "total_points": pts,
         })
 
     # Build member → teams mapping for standings detail

@@ -199,10 +199,24 @@ def recalculate_standings(pool_id):
     else:
         scores = {}
 
-    # Sort by score descending, assign ranks
-    sorted_members = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    # Sort by score descending, with display name as a deterministic
+    # tiebreaker so ties render in a stable order.
+    names = {}
+    for m in members:
+        u = sb.table("users").select("display_name").eq("id", m["user_id"]).execute().data
+        names[m["id"]] = (u[0]["display_name"] if u else "").lower()
+    sorted_members = sorted(
+        scores.items(),
+        key=lambda x: (-x[1], names.get(x[0], "")),
+    )
 
-    for rank, (member_id, total) in enumerate(sorted_members, 1):
+    # Standard competition ranking: tied scores share the lower rank
+    # (1,1,1,4,...), so the next distinct score skips ahead by the tie size.
+    prev_score = object()
+    prev_rank = 0
+    for i, (member_id, total) in enumerate(sorted_members, 1):
+        rank = prev_rank if total == prev_score else i
+        prev_rank, prev_score = rank, total
         sb.table("pool_standings").upsert({
             "pool_id": pool_id,
             "member_id": member_id,
@@ -211,7 +225,6 @@ def recalculate_standings(pool_id):
             "points_breakdown": {},
         }, on_conflict="pool_id,member_id").execute()
 
-        # Update denormalized total on pool_members
         sb.table("pool_members").update({"total_points": total}).eq(
             "id", member_id
         ).execute()
