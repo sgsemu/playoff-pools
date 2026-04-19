@@ -35,7 +35,9 @@ def fetch_upcoming_games(days=7):
                     if event.get("season", {}).get("type", 0) != 3:
                         continue
                     comp = event["competitions"][0]
-                    if comp["status"]["type"]["completed"]:
+                    # Only show games that haven't started. Completed ones go
+                    # to Recent Games, in-progress ones to the Live section.
+                    if comp["status"]["type"].get("state") != "pre":
                         continue
                     home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
                     away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
