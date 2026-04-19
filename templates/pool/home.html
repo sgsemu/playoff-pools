@@ -62,46 +62,8 @@ function deletePool() {
 
     <!-- Standings -->
     <h2 class="section-title">Standings</h2>
-    <div class="standings-table-wrapper">
-        <table class="standings-table">
-            <thead>
-                <tr>
-                    <th>Rank</th>
-                    <th>Player</th>
-                    <th>Points</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for s in standings %}
-                <tr class="{% if s.rank and s.rank <= 2 %}payout-row{% endif %} standings-row" onclick="toggleTeams('teams-{{ loop.index }}')">
-                    <td>{{ s.rank if s.rank is not none else '—' }}</td>
-                    <td>
-                        {% for m in members if m.id == s.member_id %}
-                            {{ m.users.display_name }}
-                        {% endfor %}
-                        <span class="expand-icon">▸</span>
-                    </td>
-                    <td>{{ s.total_points }}</td>
-                </tr>
-                <tr class="teams-detail" id="teams-{{ loop.index }}" style="display:none;">
-                    <td colspan="3">
-                        <div class="member-teams-list">
-                            {% for t in member_teams.get(s.member_id, []) %}
-                            <div class="member-team-row" data-league="{{ t.league }}" data-abbr="{{ t.abbreviation }}">
-                                <span class="team-league-badge {{ t.league }}">{{ t.league | upper }}</span>
-                                <span class="team-detail-name">{{ t.abbreviation }} {{ t.name }}</span>
-                                <span class="team-detail-wins">{{ t.wins }}W</span>
-                            </div>
-                            {% endfor %}
-                            {% if not member_teams.get(s.member_id) %}
-                            <div class="member-team-row"><span class="team-detail-name">No teams drafted yet</span></div>
-                            {% endif %}
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="standings-table-wrapper" id="standings-wrapper">
+        {% include "pool/_standings_table.html" %}
     </div>
 
     <!-- Members (hidden once the draft is complete; Standings covers it) -->
@@ -118,4 +80,5 @@ function deletePool() {
     {% endif %}
 </div>
 <script src="{{ url_for('static', filename='js/live-pulse.js') }}"></script>
+<script src="{{ url_for('static', filename='js/standings-refresh.js') }}"></script>
 {% endblock %}

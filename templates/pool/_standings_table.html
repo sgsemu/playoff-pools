@@ -1,0 +1,30 @@
+<table class="standings-table">
+    <thead><tr><th>Rank</th><th>Player</th><th>Points</th></tr></thead>
+    <tbody>
+        {% for s in standings %}
+        <tr class="{% if s.rank and s.rank <= 2 %}payout-row{% endif %} standings-row"
+            data-member-id="{{ s.member_id }}"
+            onclick="toggleTeams('teams-{{ loop.index }}')">
+            <td>{{ s.rank }}</td>
+            <td>{{ s.display_name }} <span class="expand-icon">▸</span></td>
+            <td>{{ s.total_points }}</td>
+        </tr>
+        <tr class="teams-detail" id="teams-{{ loop.index }}" data-member-id="{{ s.member_id }}" style="display:none;">
+            <td colspan="3">
+                <div class="member-teams-list">
+                    {% for t in member_teams.get(s.member_id, []) %}
+                    <div class="member-team-row" data-league="{{ t.league }}" data-abbr="{{ t.abbreviation }}">
+                        <span class="team-league-badge {{ t.league }}">{{ t.league | upper }}</span>
+                        <span class="team-detail-name">{{ t.abbreviation }} {{ t.name }}</span>
+                        <span class="team-detail-wins">{{ t.wins }}W</span>
+                    </div>
+                    {% endfor %}
+                    {% if not member_teams.get(s.member_id) %}
+                    <div class="member-team-row"><span class="team-detail-name">No teams drafted yet</span></div>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
