@@ -104,7 +104,8 @@ function deletePool() {
         </table>
     </div>
 
-    <!-- Members -->
+    <!-- Members (hidden once the draft is complete; Standings covers it) -->
+    {% if pool.draft_status != 'complete' %}
     <h2 class="section-title">Members ({{ members | length }})</h2>
     <div class="members-list">
         {% for m in members %}
@@ -114,5 +115,6 @@ function deletePool() {
         </div>
         {% endfor %}
     </div>
+    {% endif %}
 </div>
 {% endblock %}
