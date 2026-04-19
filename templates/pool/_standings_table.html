@@ -5,7 +5,7 @@
         <tr class="{% if s.rank and s.rank <= 2 %}payout-row{% endif %} standings-row"
             data-member-id="{{ s.member_id }}"
             onclick="toggleTeams('teams-{{ loop.index }}')">
-            <td>{{ s.rank }}</td>
+            <td>{% if s.rank == 1 %}<span class="rank-crown" title="Pool leader">👑</span>{% endif %}{{ s.rank }}</td>
             <td>{{ s.display_name }} <span class="expand-icon">▸</span></td>
             <td>{{ s.total_points }}</td>
         </tr>

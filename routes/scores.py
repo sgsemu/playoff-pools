@@ -1,9 +1,22 @@
 import time
+import datetime
 from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.scoring import calculate_team_scores, calculate_salary_cap_scores
 from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, today_et
+from services.quotes import quote_of_the_day
+
+
+def playoff_day_count():
+    """Day N of playoffs, measured from the earliest completed game in the DB.
+    Returns 0 if no games have been synced yet."""
+    sb = get_service_client()
+    rows = sb.table("game_results").select("game_date").order("game_date").limit(1).execute().data
+    if not rows:
+        return 0
+    start = datetime.date.fromisoformat(rows[0]["game_date"])
+    return max(1, (today_et() - start).days + 1)
 
 scores_bp = Blueprint("scores", __name__)
 
@@ -34,7 +47,8 @@ def game_scores(pool_id):
 
     return render_template("pool/scores.html",
         pool=pool, games=games, standings=standings,
-        member_teams=member_teams, upcoming=upcoming, live=live)
+        member_teams=member_teams, upcoming=upcoming, live=live,
+        playoff_day=playoff_day_count(), quote=quote_of_the_day())
 
 
 @scores_bp.route("/pool/<pool_id>/standings.partial")

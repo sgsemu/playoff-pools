@@ -126,11 +126,13 @@ def pool_home(pool_id):
         m["users"] = user_data[0] if user_data else {"display_name": "Unknown", "email": ""}
         members.append(m)
 
-    from routes.scores import build_standings_view
+    from routes.scores import build_standings_view, playoff_day_count
+    from services.quotes import quote_of_the_day
     standings, member_teams = build_standings_view(pool_id)
 
     return render_template("pool/home.html", pool=pool, members=members,
-        standings=standings, member_teams=member_teams)
+        standings=standings, member_teams=member_teams,
+        playoff_day=playoff_day_count(), quote=quote_of_the_day())
 
 
 @pools_bp.route("/join/<invite_code>")

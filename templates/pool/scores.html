@@ -9,6 +9,13 @@
         </form>
     </div>
 
+    {% if playoff_day or quote %}
+    <div class="pool-chrome">
+        {% if playoff_day %}<span class="playoff-day-badge">🧔 Playoffs Day {{ playoff_day }}</span>{% endif %}
+        {% if quote %}<div class="playoff-quote">"{{ quote.text }}"<span class="author">— {{ quote.author }}</span></div>{% endif %}
+    </div>
+    {% endif %}
+
     <!-- Standings summary -->
     {% if standings %}
     <div class="standings-table-wrapper" id="standings-wrapper">
