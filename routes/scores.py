@@ -6,6 +6,7 @@ from services.supabase_client import get_service_client
 from services.scoring import calculate_team_scores, calculate_salary_cap_scores
 from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, today_et
 from services.quotes import quote_of_the_day
+from services.team_colors import team_color
 
 
 def playoff_day_count():
@@ -214,6 +215,7 @@ def build_standings_view(pool_id):
                 "abbreviation": t["abbreviation"],
                 "name": t["name"],
                 "wins": team_wins.get((league, tid), 0),
+                "color": team_color(league, tid),
             })
 
     rows = [{

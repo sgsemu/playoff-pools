@@ -13,7 +13,7 @@
             <td colspan="3">
                 <div class="member-teams-list">
                     {% for t in member_teams.get(s.member_id, []) %}
-                    <div class="member-team-row" data-league="{{ t.league }}" data-abbr="{{ t.abbreviation }}">
+                    <div class="member-team-row" data-league="{{ t.league }}" data-abbr="{{ t.abbreviation }}" style="border-left-color: #{{ t.color }};">
                         <span class="team-league-badge {{ t.league }}">{{ t.league | upper }}</span>
                         <span class="team-detail-name">{{ t.abbreviation }} {{ t.name }}</span>
                         <span class="team-detail-wins">{{ t.wins }}W</span>
