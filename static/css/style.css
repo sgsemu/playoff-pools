@@ -193,6 +193,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .team-league-badge.nhl { background: #1d4ed8; color: #fff; }
 .team-detail-name { flex: 1; color: #ccc; }
 .team-detail-wins { font-weight: 700; color: #4ade80; min-width: 30px; text-align: right; }
+@keyframes livePulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.85); } }
+.member-team-row.team-live::before { content: "●"; color: #ef4444; font-size: 10px; animation: livePulse 1.1s ease-in-out infinite; }
 .scores-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .btn-refresh { background: #1a1a2e; border: 1px solid #333; color: #ccc; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .btn-refresh:hover { border-color: #3b82f6; color: #fff; }

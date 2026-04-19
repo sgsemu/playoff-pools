@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ pool.name }} - Playoff Pools{% endblock %}
 {% block content %}
-<div class="pool-home">
+<div class="pool-home" data-live-pulse-pool="{{ pool.id }}">
     <div class="pool-header">
         <h1>{{ pool.name }}</h1>
         <div class="pool-meta">
@@ -87,7 +87,7 @@ function deletePool() {
                     <td colspan="3">
                         <div class="member-teams-list">
                             {% for t in member_teams.get(s.member_id, []) %}
-                            <div class="member-team-row">
+                            <div class="member-team-row" data-league="{{ t.league }}" data-abbr="{{ t.abbreviation }}">
                                 <span class="team-league-badge {{ t.league }}">{{ t.league | upper }}</span>
                                 <span class="team-detail-name">{{ t.abbreviation }} {{ t.name }}</span>
                                 <span class="team-detail-wins">{{ t.wins }}W</span>
@@ -117,4 +117,5 @@ function deletePool() {
     </div>
     {% endif %}
 </div>
+<script src="{{ url_for('static', filename='js/live-pulse.js') }}"></script>
 {% endblock %}
