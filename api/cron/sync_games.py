@@ -80,9 +80,9 @@ def sync_games():
 
     total_new = nba_new + nhl_new
 
-    # Recalculate standings for all active pools
+    # Recalculate standings for pools whose drafts are finished.
     if total_new > 0:
-        pools = sb.table("pools").select("id").eq("draft_status", "active").execute().data
+        pools = sb.table("pools").select("id").eq("draft_status", "complete").execute().data
         for pool in pools:
             recalculate_standings(pool["id"])
 
