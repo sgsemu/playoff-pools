@@ -1,9 +1,18 @@
 import requests
-from datetime import date, timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 ESPN_NBA_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 ESPN_NHL_BASE = "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl"
 ESPN_BASE = ESPN_NBA_BASE  # backward compat
+
+# Anchor "today" to Eastern Time so Vercel (UTC) doesn't flip the date
+# after 8 PM ET during DST.
+_ET = ZoneInfo("America/New_York")
+
+
+def today_et():
+    return datetime.now(_ET).date()
 
 
 def fetch_upcoming_games(days=7):
@@ -13,7 +22,7 @@ def fetch_upcoming_games(days=7):
     by_date = OrderedDict()
 
     for d in range(days):
-        game_date = date.today() + timedelta(days=d)
+        game_date = today_et() + timedelta(days=d)
         dt = game_date.strftime("%Y%m%d")
         date_label = game_date.strftime("%a, %b %-d")  # e.g. "Fri, Apr 18"
         date_key = game_date.isoformat()

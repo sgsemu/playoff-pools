@@ -2,8 +2,7 @@ from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.scoring import calculate_team_scores, calculate_salary_cap_scores
-from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard
-import datetime
+from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, today_et
 
 scores_bp = Blueprint("scores", __name__)
 
@@ -107,7 +106,7 @@ def refresh_scores(pool_id):
                 "away_score": game["away_score"],
                 "round": 1,
                 "league": league,
-                "game_date": datetime.date.today().isoformat(),
+                "game_date": today_et().isoformat(),
             }).execute()
 
             winner_id = game["home_team_id"] if game["home_score"] > game["away_score"] else game["away_team_id"]

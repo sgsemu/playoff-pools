@@ -13,7 +13,7 @@ os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 
 from flask import Flask, jsonify
 from services.supabase_client import get_service_client
-from services.espn_api import fetch_scoreboard, fetch_nhl_scoreboard
+from services.espn_api import fetch_scoreboard, fetch_nhl_scoreboard, today_et
 from routes.scores import recalculate_standings
 
 app = Flask(__name__)
@@ -48,7 +48,7 @@ def _sync_league_games(sb, games, league, teams_table):
             "away_score": game["away_score"],
             "round": 1,
             "league": league,
-            "game_date": __import__("datetime").date.today().isoformat(),
+            "game_date": today_et().isoformat(),
         }).execute()
 
         # Update team records
