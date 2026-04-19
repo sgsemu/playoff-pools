@@ -11,104 +11,21 @@
 
     {% if playoff_day or quote %}
     <div class="pool-chrome">
-        {% if playoff_day %}<span class="playoff-day-badge">🧔 Playoffs Day {{ playoff_day }}</span>{% endif %}
-        {% if quote %}<div class="playoff-quote">"{{ quote.text }}"<span class="author">— {{ quote.author }}</span></div>{% endif %}
+        {% if playoff_day %}<span class="playoff-day-badge">🧔 Day {{ playoff_day }}</span>{% endif %}
+        {% if quote %}<span class="playoff-quote">"{{ quote.text }}"<span class="author">— {{ quote.author }}</span></span>{% endif %}
     </div>
     {% endif %}
 
-    <!-- Standings summary -->
     {% if standings %}
     <div class="standings-table-wrapper" id="standings-wrapper">
         {% include "pool/_standings_table.html" %}
     </div>
     {% endif %}
 
-    <!-- Live games -->
-    <div id="live-section" style="{% if not live %}display:none;{% endif %}">
-        <h2 class="section-title">Live <span class="live-dot">●</span></h2>
-        <div class="games-list" id="live-games">
-            {% for g in live %}
-            <div class="game-card live">
-                <div class="game-teams">
-                    <span class="team-league-badge {{ g.league }}">{{ g.league | upper }}</span>
-                    <span>{{ g.away_abbr }} {{ g.away_score }}</span>
-                    <span class="game-at">@</span>
-                    <span>{{ g.home_abbr }} {{ g.home_score }}</span>
-                </div>
-                <div class="game-meta">{{ g.status }}</div>
-            </div>
-            {% endfor %}
-        </div>
+    <h2 class="section-title">Games</h2>
+    <div id="calendar-wrapper">
+        {% include "pool/_calendar.html" %}
     </div>
-
-    <!-- Game results -->
-    <h2 class="section-title">Recent Games</h2>
-    {% if games %}
-    <div class="games-list">
-        {% for g in games %}
-        <div class="game-card">
-            <div class="game-teams">
-                <span class="{% if g.away_score > g.home_score %}game-winner{% endif %}">{{ g.away_name }} {{ g.away_score }}</span>
-                <span class="game-at">@</span>
-                <span class="{% if g.home_score > g.away_score %}game-winner{% endif %}">{{ g.home_name }} {{ g.home_score }}</span>
-            </div>
-            <div class="game-meta">Round {{ g.round }} &middot; {{ g.game_date }}</div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-state"><p>No games yet.</p></div>
-    {% endif %}
-
-    <!-- Upcoming Games -->
-    {% if upcoming %}
-    <h2 class="section-title">Upcoming Games</h2>
-
-    <div class="day-tabs">
-        {% for date_key, day in upcoming.items() %}
-        <button class="day-tab {% if loop.first %}active{% endif %}" onclick="selectDay('{{ date_key }}', this)">{{ day.label }}</button>
-        {% endfor %}
-    </div>
-
-    {% for date_key, day in upcoming.items() %}
-    <div class="day-games" id="day-{{ date_key }}" style="{% if not loop.first %}display:none{% endif %}">
-        {% if day.nba %}
-        <h3 class="league-header">🏀 NBA</h3>
-        <div class="games-list">
-            {% for g in day.nba %}
-            <div class="game-card upcoming">
-                <div class="game-teams">
-                    <span>{{ g.away_abbr }}</span>
-                    <span class="game-at">@</span>
-                    <span>{{ g.home_abbr }}</span>
-                </div>
-                <div class="game-meta">{{ g.status }}</div>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        {% if day.nhl %}
-        <h3 class="league-header">🏒 NHL</h3>
-        <div class="games-list">
-            {% for g in day.nhl %}
-            <div class="game-card upcoming">
-                <div class="game-teams">
-                    <span>{{ g.away_abbr }}</span>
-                    <span class="game-at">@</span>
-                    <span>{{ g.home_abbr }}</span>
-                </div>
-                <div class="game-meta">{{ g.status }}</div>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        {% if not day.nba and not day.nhl %}
-        <div class="empty-state"><p>No playoff games scheduled.</p></div>
-        {% endif %}
-    </div>
-    {% endfor %}
 
     <script>
     function toggleTeams(id) {
@@ -122,41 +39,21 @@
             arrow.textContent = '▸';
         }
     }
-    function selectDay(dateKey, btn) {
-        document.querySelectorAll('.day-games').forEach(el => el.style.display = 'none');
-        document.querySelectorAll('.day-tab').forEach(el => el.classList.remove('active'));
-        document.getElementById('day-' + dateKey).style.display = 'block';
-        btn.classList.add('active');
+    function selectCalendarDay(dateKey, btn) {
+        const wrap = btn.closest('.calendar');
+        wrap.dataset.activeDate = dateKey;
+        wrap.querySelectorAll('.day-games').forEach(el => {
+            el.style.display = el.dataset.date === dateKey ? '' : 'none';
+        });
+        wrap.querySelectorAll('.day-tab').forEach(el => {
+            el.classList.toggle('active', el.dataset.date === dateKey);
+        });
     }
-
-    async function refreshLive() {
-        try {
-            const r = await fetch('/pool/{{ pool.id }}/scores/live.json', { cache: 'no-store' });
-            if (!r.ok) return;
-            const { live } = await r.json();
-            const section = document.getElementById('live-section');
-            const list = document.getElementById('live-games');
-            if (!live.length) { section.style.display = 'none'; return; }
-            section.style.display = '';
-            list.innerHTML = live.map(g => `
-                <div class="game-card live">
-                    <div class="game-teams">
-                        <span class="team-league-badge ${g.league}">${g.league.toUpperCase()}</span>
-                        <span>${g.away_abbr} ${g.away_score}</span>
-                        <span class="game-at">@</span>
-                        <span>${g.home_abbr} ${g.home_score}</span>
-                    </div>
-                    <div class="game-meta">${g.status}</div>
-                </div>
-            `).join('');
-        } catch (e) { /* keep last render */ }
-    }
-    setInterval(refreshLive, 45000);
     </script>
-    {% endif %}
 </div>
 
 <a href="/pool/{{ pool.id }}" class="btn btn-secondary" style="margin-top:16px;">Back to Pool</a>
 <script src="{{ url_for('static', filename='js/live-pulse.js') }}"></script>
 <script src="{{ url_for('static', filename='js/standings-refresh.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calendar-refresh.js') }}"></script>
 {% endblock %}

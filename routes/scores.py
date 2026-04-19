@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.scoring import calculate_team_scores, calculate_salary_cap_scores
-from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, today_et
+from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, fetch_calendar_games, today_et
 from services.quotes import quote_of_the_day
 from services.team_colors import team_color
 
@@ -31,25 +31,29 @@ def game_scores(pool_id):
         return "Pool not found", 404
     pool = pool[0]
 
-    games = sb.table("game_results").select("*").order("game_date", desc=True).execute().data
-    nba_teams = {t["id"]: t for t in sb.table("nba_teams").select("*").execute().data}
-    nhl_teams = {t["id"]: t for t in sb.table("nhl_teams").select("*").execute().data}
-
-    # Annotate games with team names — ESPN NBA and NHL team ids overlap,
-    # so pick the per-league dict off each row's league column.
-    for g in games:
-        teams = nba_teams if g.get("league", "nba") == "nba" else nhl_teams
-        g["home_name"] = teams.get(g["home_team_id"], {}).get("name", "?")
-        g["away_name"] = teams.get(g["away_team_id"], {}).get("name", "?")
-
     standings, member_teams = build_standings_view(pool_id)
-    upcoming = fetch_upcoming_games(days=7)
-    live = fetch_live_games()
+    calendar = fetch_calendar_games(days_back=7, days_forward=7)
+    active_date = _active_calendar_date(calendar)
 
     return render_template("pool/scores.html",
-        pool=pool, games=games, standings=standings,
-        member_teams=member_teams, upcoming=upcoming, live=live,
+        pool=pool, standings=standings, member_teams=member_teams,
+        calendar=calendar, active_date=active_date,
         playoff_day=playoff_day_count(), quote=quote_of_the_day())
+
+
+def _active_calendar_date(calendar):
+    """Default tab: today if it has games, otherwise the nearest day with games
+    (prefer the most recent past day, then the next upcoming day)."""
+    today_key = today_et().isoformat()
+    if today_key in calendar:
+        return today_key
+    past = [k for k in calendar if k < today_key]
+    future = [k for k in calendar if k > today_key]
+    if past:
+        return past[-1]
+    if future:
+        return future[0]
+    return None
 
 
 @scores_bp.route("/pool/<pool_id>/standings.partial")
@@ -61,6 +65,16 @@ def standings_partial(pool_id):
     standings, member_teams = build_standings_view(pool_id)
     return render_template("pool/_standings_table.html",
         standings=standings, member_teams=member_teams)
+
+
+@scores_bp.route("/pool/<pool_id>/calendar.partial")
+@login_required
+def calendar_partial(pool_id):
+    maybe_auto_sync(throttle_seconds=120)
+    calendar = fetch_calendar_games(days_back=7, days_forward=7)
+    active_date = _active_calendar_date(calendar)
+    return render_template("pool/_calendar.html",
+        calendar=calendar, active_date=active_date)
 
 
 @scores_bp.route("/pool/<pool_id>/scores/live.json")

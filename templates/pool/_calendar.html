@@ -1,0 +1,48 @@
+<div class="calendar" data-active-date="{{ active_date }}">
+    <div class="day-tabs">
+        {% for date_key, day in calendar.items() %}
+        <button type="button"
+                class="day-tab{% if date_key == active_date %} active{% endif %}"
+                data-date="{{ date_key }}"
+                onclick="selectCalendarDay('{{ date_key }}', this)">
+            {{ day.label }}
+        </button>
+        {% endfor %}
+    </div>
+
+    {% for date_key, day in calendar.items() %}
+    <div class="day-games" data-date="{{ date_key }}" style="{% if date_key != active_date %}display:none;{% endif %}">
+        {% if day.games %}
+        <div class="games-list">
+            {% for g in day.games %}
+            <div class="game-card state-{{ g.state }}" data-league="{{ g.league }}">
+                <div class="game-status">
+                    <span class="status-pill {{ g.state }}">
+                        {% if g.state == 'post' %}Final
+                        {% elif g.state == 'in' %}● Live · {{ g.status_detail }}
+                        {% else %}{{ g.status_detail }}
+                        {% endif %}
+                    </span>
+                    <span class="game-league-badge {{ g.league }}">{{ g.league | upper }}</span>
+                </div>
+                <div class="game-team away {% if g.state == 'post' and g.away.score > g.home.score %}winner{% endif %}"
+                     style="border-left-color: #{{ g.away.color }};">
+                    <span class="team-abbr">{{ g.away.abbr }}</span>
+                    <span class="team-name">{{ g.away.name }}</span>
+                    <span class="team-score">{% if g.state != 'pre' %}{{ g.away.score }}{% endif %}</span>
+                </div>
+                <div class="game-team home {% if g.state == 'post' and g.home.score > g.away.score %}winner{% endif %}"
+                     style="border-left-color: #{{ g.home.color }};">
+                    <span class="team-abbr">{{ g.home.abbr }}</span>
+                    <span class="team-name">{{ g.home.name }}</span>
+                    <span class="team-score">{% if g.state != 'pre' %}{{ g.home.score }}{% endif %}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state"><p>No playoff games scheduled.</p></div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>

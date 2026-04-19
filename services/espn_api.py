@@ -58,6 +58,62 @@ def fetch_upcoming_games(days=7):
     return by_date
 
 
+def fetch_calendar_games(days_back=7, days_forward=7):
+    """Return every playoff game in a window around today, grouped by date.
+    Each game carries state (pre/in/post), status detail, scores, and
+    primary team colors so the calendar view can render everything in one
+    pass. Days with no games are omitted."""
+    from collections import OrderedDict
+    from services.team_colors import team_color
+
+    by_date = OrderedDict()
+    for d in range(-days_back, days_forward + 1):
+        game_date = today_et() + timedelta(days=d)
+        dt = game_date.strftime("%Y%m%d")
+        date_label = game_date.strftime("%a, %b %-d")
+        date_key = game_date.isoformat()
+
+        for base, league in [(ESPN_NBA_BASE, "nba"), (ESPN_NHL_BASE, "nhl")]:
+            try:
+                resp = requests.get(f"{base}/scoreboard", params={"dates": dt}, timeout=8)
+                resp.raise_for_status()
+                events = resp.json().get("events", [])
+            except Exception:
+                continue
+            for ev in events:
+                if ev.get("season", {}).get("type", 0) != 3:
+                    continue
+                comp = ev["competitions"][0]
+                s = comp["status"]["type"]
+                home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
+                away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
+                home_id = int(home["team"]["id"])
+                away_id = int(away["team"]["id"])
+
+                by_date.setdefault(date_key, {"label": date_label, "games": []})
+                by_date[date_key]["games"].append({
+                    "espn_game_id": ev["id"],
+                    "league": league,
+                    "state": s.get("state", "pre"),
+                    "status_detail": s.get("shortDetail", ""),
+                    "home": {
+                        "id": home_id,
+                        "abbr": home["team"].get("abbreviation", "?"),
+                        "name": home["team"].get("displayName", "?"),
+                        "score": int(home["score"]) if home.get("score") else 0,
+                        "color": team_color(league, home_id),
+                    },
+                    "away": {
+                        "id": away_id,
+                        "abbr": away["team"].get("abbreviation", "?"),
+                        "name": away["team"].get("displayName", "?"),
+                        "score": int(away["score"]) if away.get("score") else 0,
+                        "color": team_color(league, away_id),
+                    },
+                })
+    return by_date
+
+
 def fetch_live_games():
     """Return in-progress playoff games with current scores and status."""
     out = []
