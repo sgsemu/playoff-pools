@@ -64,7 +64,7 @@ def fetch_calendar_games(competitions, days_back=7, days_forward=7):
     and primary team colors so the calendar can render in one pass. Days with
     no games are omitted."""
     from collections import OrderedDict
-    from services.team_colors import team_color
+    from services.team_colors import team_color, team_logo_url
 
     by_date = OrderedDict()
     for d in range(-days_back, days_forward + 1):
@@ -95,6 +95,7 @@ def fetch_calendar_games(competitions, days_back=7, days_forward=7):
                         "name": game.get("home_team_name", "?"),
                         "score": game["home_score"],
                         "color": home_color,
+                        "logo_url": team_logo_url(comp.get("league", ""), game["home_team_id"]),
                     },
                     "away": {
                         "id": game["away_team_id"],
@@ -102,6 +103,7 @@ def fetch_calendar_games(competitions, days_back=7, days_forward=7):
                         "name": game.get("away_team_name", "?"),
                         "score": game["away_score"],
                         "color": away_color,
+                        "logo_url": team_logo_url(comp.get("league", ""), game["away_team_id"]),
                     },
                 })
     return by_date

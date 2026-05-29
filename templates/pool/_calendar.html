@@ -37,12 +37,14 @@
                 </div>
                 <div class="game-team away {% if g.state == 'post' and g.away.score > g.home.score %}winner{% endif %}"
                      style="border-left-color: #{{ g.away.color }};">
+                    {% if g.away.logo_url %}<img class="game-team-logo" src="{{ g.away.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
                     <span class="team-abbr">{{ g.away.abbr }}</span>
                     <span class="team-name">{{ g.away.name }}</span>
                     <span class="team-score">{% if g.state != 'pre' %}{{ g.away.score }}{% endif %}</span>
                 </div>
                 <div class="game-team home {% if g.state == 'post' and g.home.score > g.away.score %}winner{% endif %}"
                      style="border-left-color: #{{ g.home.color }};">
+                    {% if g.home.logo_url %}<img class="game-team-logo" src="{{ g.home.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
                     <span class="team-abbr">{{ g.home.abbr }}</span>
                     <span class="team-name">{{ g.home.name }}</span>
                     <span class="team-score">{% if g.state != 'pre' %}{{ g.home.score }}{% endif %}</span>
