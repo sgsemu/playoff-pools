@@ -1,5 +1,5 @@
 import secrets
-from flask import Blueprint, render_template, request, redirect, session, flash
+from flask import Blueprint, render_template, request, redirect, session, flash, jsonify
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 
@@ -45,6 +45,35 @@ def _build_auction_config(form):
     if auction_style == "budget":
         config["starting_budget"] = int(form.get("starting_budget", 100))
     return config
+
+
+def get_addable_players(sb, pool_id, commissioner_id):
+    """Users the commissioner has shared any pool with, excluding those already
+    in this pool and the commissioner. Returns [{id, display_name}] by name.
+
+    Takes an explicit `sb` so it unit-tests without patching module globals.
+    """
+    mine = sb.table("pool_members").select("pool_id").eq(
+        "user_id", commissioner_id
+    ).execute().data
+    my_pool_ids = list({m["pool_id"] for m in mine})
+    if not my_pool_ids:
+        return []
+    co_members = sb.table("pool_members").select("user_id").in_(
+        "pool_id", my_pool_ids
+    ).execute().data
+    candidate_ids = {m["user_id"] for m in co_members}
+    current = sb.table("pool_members").select("user_id").eq(
+        "pool_id", pool_id
+    ).execute().data
+    current_ids = {m["user_id"] for m in current}
+    addable_ids = candidate_ids - current_ids - {commissioner_id}
+    if not addable_ids:
+        return []
+    users = sb.table("users").select("id,display_name").in_(
+        "id", list(addable_ids)
+    ).execute().data
+    return sorted(users, key=lambda u: (u.get("display_name") or "").lower())
 
 
 def _inherited_scoring_config(sb, competition_ids):
@@ -153,13 +182,46 @@ def pool_home(pool_id):
         m["users"] = user_data[0] if user_data else {"display_name": "Unknown", "email": ""}
         members.append(m)
 
-    from routes.scores import build_standings_view, playoff_day_count
-    from services.quotes import quote_of_the_day
+    from routes.scores import build_standings_view
     standings, member_teams = build_standings_view(pool_id)
+
+    addable_players = []
+    if pool["creator_id"] == session["user_id"] and pool["draft_status"] == "pending":
+        addable_players = get_addable_players(sb, pool_id, session["user_id"])
 
     return render_template("pool/home.html", pool=pool, members=members,
         standings=standings, member_teams=member_teams,
-        playoff_day=playoff_day_count(), quote=quote_of_the_day())
+        addable_players=addable_players)
+
+
+@pools_bp.route("/pool/<pool_id>/members/add", methods=["POST"])
+@login_required
+def add_member(pool_id):
+    sb = get_service_client()
+    pool = sb.table("pools").select("*").eq("id", pool_id).execute().data
+    if not pool:
+        flash("Pool not found.", "error")
+        return redirect("/dashboard")
+    pool = pool[0]
+
+    if pool["creator_id"] != session["user_id"]:
+        return jsonify({"error": "Only the creator can add players"}), 403
+    if pool["draft_status"] != "pending":
+        return jsonify({"error": "Players can only be added before the draft starts"}), 409
+
+    user_id = request.form.get("user_id")
+    addable_ids = {p["id"] for p in get_addable_players(sb, pool_id, session["user_id"])}
+    if user_id not in addable_ids:
+        return jsonify({"error": "That user isn't someone you can add"}), 403
+
+    try:
+        sb.table("pool_members").insert({
+            "pool_id": pool_id, "user_id": user_id, "role": "member",
+        }).execute()
+        flash("Player added to the pool.", "success")
+    except Exception:
+        flash("That player is already in the pool.", "error")
+    return redirect(f"/pool/{pool_id}")
 
 
 @pools_bp.route("/join/<invite_code>")

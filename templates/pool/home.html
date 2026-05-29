@@ -22,6 +22,22 @@
     </div>
     {% endif %}
 
+    <!-- Commissioner: add people you've played with before (pre-draft only). -->
+    {% if pool.creator_id == session.get('user_id') and pool.draft_status == 'pending' and addable_players %}
+    <div class="add-players-box">
+        <label>Add players you've played with</label>
+        <div class="add-players-list">
+            {% for p in addable_players %}
+            <form class="add-player-row" method="POST" action="/pool/{{ pool.id }}/members/add">
+                <input type="hidden" name="user_id" value="{{ p.id }}">
+                <span>{{ p.display_name }}</span>
+                <button type="submit" class="btn btn-secondary btn-sm">Add</button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Primary action only. Destructive action lives at the page footer. -->
     <div class="pool-actions">
         {% if pool.type in ('draft', 'auction') and pool.draft_status != 'complete' %}

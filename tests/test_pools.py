@@ -138,3 +138,94 @@ def test_join_pool_via_invite(mock_sb, authed_client):
 
     resp = authed_client.get("/join/ABC123", follow_redirects=False)
     assert resp.status_code == 302
+
+
+from routes.pools import get_addable_players
+
+
+def test_get_addable_players_includes_co_players_excludes_members_and_self():
+    # Commissioner u1 is in pools p1 (target) and p2 (prior). Co-members across
+    # those pools are {u1, u2, u3}. p1 already has {u1, u3}. Addable -> {u2}.
+    def table(name):
+        t = MagicMock()
+        if name == "pool_members":
+            def _select(col):
+                s = MagicMock()
+                if col == "pool_id":
+                    s.eq.return_value.execute.return_value.data = [
+                        {"pool_id": "p1"}, {"pool_id": "p2"}]
+                elif col == "user_id":
+                    s.in_.return_value.execute.return_value.data = [
+                        {"user_id": "u1"}, {"user_id": "u2"}, {"user_id": "u3"}]
+                    s.eq.return_value.execute.return_value.data = [
+                        {"user_id": "u1"}, {"user_id": "u3"}]
+                return s
+            t.select.side_effect = _select
+        elif name == "users":
+            t.select.return_value.in_.return_value.execute.return_value.data = [
+                {"id": "u2", "display_name": "Mike"}]
+        return t
+
+    sb = MagicMock()
+    sb.table.side_effect = table
+    result = get_addable_players(sb, "p1", "u1")
+    assert [u["id"] for u in result] == ["u2"]
+
+
+def _pool_only(creator_id, draft_status):
+    def table(name):
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "pool-1", "creator_id": creator_id, "draft_status": draft_status}]
+        return t
+    return table
+
+
+@patch("routes.pools.get_addable_players")
+@patch("routes.pools.get_service_client")
+def test_add_member_happy_path(mock_sb, mock_addable, authed_client):
+    mock_addable.return_value = [{"id": "u2", "display_name": "Mike"}]
+    inserted = {}
+
+    def table(name):
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "pool-1", "creator_id": "test-uuid", "draft_status": "pending"}]
+        elif name == "pool_members":
+            def _ins(row):
+                inserted.update(row)
+                r = MagicMock(); r.execute.return_value.data = [{}]; return r
+            t.insert.side_effect = _ins
+        return t
+
+    mock_sb.return_value.table.side_effect = table
+    resp = authed_client.post("/pool/pool-1/members/add", data={"user_id": "u2"})
+    assert resp.status_code == 302
+    assert inserted == {"pool_id": "pool-1", "user_id": "u2", "role": "member"}
+
+
+@patch("routes.pools.get_addable_players")
+@patch("routes.pools.get_service_client")
+def test_add_member_rejects_non_creator(mock_sb, mock_addable, authed_client):
+    mock_sb.return_value.table.side_effect = _pool_only("someone-else", "pending")
+    resp = authed_client.post("/pool/pool-1/members/add", data={"user_id": "u2"})
+    assert resp.status_code == 403
+
+
+@patch("routes.pools.get_addable_players")
+@patch("routes.pools.get_service_client")
+def test_add_member_rejects_after_draft_starts(mock_sb, mock_addable, authed_client):
+    mock_sb.return_value.table.side_effect = _pool_only("test-uuid", "active")
+    resp = authed_client.post("/pool/pool-1/members/add", data={"user_id": "u2"})
+    assert resp.status_code == 409
+
+
+@patch("routes.pools.get_addable_players")
+@patch("routes.pools.get_service_client")
+def test_add_member_rejects_user_outside_circle(mock_sb, mock_addable, authed_client):
+    mock_addable.return_value = [{"id": "u2", "display_name": "Mike"}]
+    mock_sb.return_value.table.side_effect = _pool_only("test-uuid", "pending")
+    resp = authed_client.post("/pool/pool-1/members/add", data={"user_id": "u9"})
+    assert resp.status_code == 403
