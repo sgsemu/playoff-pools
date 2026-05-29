@@ -41,7 +41,7 @@ def game_scores(pool_id):
 
     standings, member_teams = build_standings_view(pool_id)
     comps = _pool_competitions(sb, pool_id)
-    calendar = fetch_calendar_games(comps, days_back=7, days_forward=7)
+    calendar = fetch_calendar_games(comps, days_back=7, days_forward=21)
     active_date = _active_calendar_date(calendar)
 
     return render_template("pool/scores.html",
@@ -82,7 +82,7 @@ def calendar_partial(pool_id):
     maybe_auto_sync(throttle_seconds=120)
     sb = get_service_client()
     comps = _pool_competitions(sb, pool_id)
-    calendar = fetch_calendar_games(comps, days_back=7, days_forward=7)
+    calendar = fetch_calendar_games(comps, days_back=7, days_forward=21)
     active_date = _active_calendar_date(calendar)
     return render_template("pool/_calendar.html",
         calendar=calendar, active_date=active_date)

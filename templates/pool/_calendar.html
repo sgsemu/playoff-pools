@@ -1,4 +1,12 @@
 <div class="calendar" data-active-date="{{ active_date }}">
+    {% if not calendar %}
+    <div class="empty-state">
+        <p>No games in the calendar window.</p>
+        <p style="font-size:0.85rem; color:#666; margin-top:6px;">
+            Showing games from the past week through the next 3 weeks — check back closer to event time.
+        </p>
+    </div>
+    {% else %}
     <div class="day-tabs">
         {% for date_key, day in calendar.items() %}
         <button type="button"
@@ -47,4 +55,5 @@
         {% endif %}
     </div>
     {% endfor %}
+    {% endif %}
 </div>
