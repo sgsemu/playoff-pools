@@ -1,7 +1,7 @@
 import json, os
 import pytest
 from unittest.mock import patch, MagicMock
-from services.espn_api import fetch_scoreboard, fetch_game_boxscore, fetch_playoff_teams, fetch_team_roster
+from services.espn_api import fetch_scoreboard, fetch_game_boxscore, fetch_playoff_teams, fetch_team_roster, fetch_calendar_games, fetch_live_games
 
 _FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "fifa_world_group_scoreboard.json")
 
@@ -124,3 +124,64 @@ def test_fetch_group_winners_returns_rank1_per_group():
         g.return_value.raise_for_status = lambda: None
         winners = fetch_group_winners({"espn_sport": "soccer", "espn_slug": "fifa.world"})
     assert winners == {203, 202}
+
+
+def test_fetch_calendar_games_iterates_competitions_and_tags_league():
+    payloads = {
+        ("basketball", "nba"): {"events": []},
+        ("soccer", "fifa.world"): {"events": [{
+            "id": "g1", "season": {"slug": "group-stage"},
+            "competitions": [{
+                "status": {"type": {"state": "post", "completed": True, "shortDetail": "FT"}},
+                "competitors": [
+                    {"homeAway": "home", "team": {"id": "203", "abbreviation": "MEX",
+                                                   "displayName": "Mexico"}, "score": "1", "winner": False},
+                    {"homeAway": "away", "team": {"id": "467", "abbreviation": "RSA",
+                                                   "displayName": "South Africa"}, "score": "1", "winner": False},
+                ],
+            }],
+        }]},
+    }
+
+    def fake_get(url, params=None, **_kw):
+        # URL embeds /sports/<sport>/<slug>/scoreboard
+        for (sport, slug), body in payloads.items():
+            if f"/sports/{sport}/{slug}/scoreboard" in url:
+                r = MagicMock(); r.json = lambda body=body: body; r.raise_for_status = lambda: None
+                return r
+        r = MagicMock(); r.json = lambda: {"events": []}; r.raise_for_status = lambda: None
+        return r
+
+    competitions = [
+        {"league": "nba", "espn_sport": "basketball", "espn_slug": "nba",
+         "event_filter": {"season_type": 3}},
+        {"league": "world_cup", "espn_sport": "soccer", "espn_slug": "fifa.world",
+         "event_filter": {"all_tournament": True}},
+    ]
+    with patch("services.espn_api.requests.get", side_effect=fake_get):
+        by_date = fetch_calendar_games(competitions, days_back=0, days_forward=0)
+
+    # Soccer match landed in the calendar, tagged league=world_cup, is_draw=True.
+    days = list(by_date.values())
+    assert any(any(g["league"] == "world_cup" and g["is_draw"] for g in d["games"]) for d in days)
+
+
+def test_fetch_live_games_filters_in_progress_and_tags_league():
+    payload = {"events": [{
+        "id": "g1", "season": {"slug": "group-stage"},
+        "competitions": [{
+            "status": {"type": {"state": "in", "completed": False, "shortDetail": "65'"}},
+            "competitors": [
+                {"homeAway": "home", "team": {"id": "203", "abbreviation": "MEX",
+                                               "displayName": "Mexico"}, "score": "1", "winner": False},
+                {"homeAway": "away", "team": {"id": "467", "abbreviation": "RSA",
+                                               "displayName": "South Africa"}, "score": "0", "winner": False},
+            ],
+        }],
+    }]}
+    competitions = [{"league": "world_cup", "espn_sport": "soccer", "espn_slug": "fifa.world",
+                     "event_filter": {"all_tournament": True}}]
+    with patch("services.espn_api.requests.get") as g:
+        g.return_value = MagicMock(json=lambda: payload, raise_for_status=lambda: None)
+        live = fetch_live_games(competitions)
+    assert len(live) == 1 and live[0]["league"] == "world_cup"

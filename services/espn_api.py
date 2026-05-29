@@ -58,11 +58,11 @@ def fetch_upcoming_games(days=7):
     return by_date
 
 
-def fetch_calendar_games(days_back=7, days_forward=7):
-    """Return every playoff game in a window around today, grouped by date.
-    Each game carries state (pre/in/post), status detail, scores, and
-    primary team colors so the calendar view can render everything in one
-    pass. Days with no games are omitted."""
+def fetch_calendar_games(competitions, days_back=7, days_forward=7):
+    """Return every relevant game in a window around today, grouped by date,
+    across the given competitions. Each game carries league/stage/state/scores
+    and primary team colors so the calendar can render in one pass. Days with
+    no games are omitted."""
     from collections import OrderedDict
     from services.team_colors import team_color
 
@@ -73,73 +73,61 @@ def fetch_calendar_games(days_back=7, days_forward=7):
         date_label = game_date.strftime("%a, %b %-d")
         date_key = game_date.isoformat()
 
-        for base, league in [(ESPN_NBA_BASE, "nba"), (ESPN_NHL_BASE, "nhl")]:
+        for comp in competitions or []:
             try:
-                resp = requests.get(f"{base}/scoreboard", params={"dates": dt}, timeout=8)
-                resp.raise_for_status()
-                events = resp.json().get("events", [])
+                games = fetch_competition_results(comp, dates=dt)
             except Exception:
                 continue
-            for ev in events:
-                if ev.get("season", {}).get("type", 0) != 3:
-                    continue
-                comp = ev["competitions"][0]
-                s = comp["status"]["type"]
-                home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
-                away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
-                home_id = int(home["team"]["id"])
-                away_id = int(away["team"]["id"])
-
+            for game in games:
+                # We need state + status_detail for the calendar UI; refetch the
+                # raw event would double the call count, so reuse what
+                # fetch_competition_results already gives us.
+                home_color = team_color(comp.get("league", ""), game["home_team_id"])
+                away_color = team_color(comp.get("league", ""), game["away_team_id"])
                 by_date.setdefault(date_key, {"label": date_label, "games": []})
                 by_date[date_key]["games"].append({
-                    "espn_game_id": ev["id"],
-                    "league": league,
-                    "state": s.get("state", "pre"),
-                    "status_detail": s.get("shortDetail", ""),
-                    "home": {
-                        "id": home_id,
-                        "abbr": home["team"].get("abbreviation", "?"),
-                        "name": home["team"].get("displayName", "?"),
-                        "score": int(home["score"]) if home.get("score") else 0,
-                        "color": team_color(league, home_id),
-                    },
-                    "away": {
-                        "id": away_id,
-                        "abbr": away["team"].get("abbreviation", "?"),
-                        "name": away["team"].get("displayName", "?"),
-                        "score": int(away["score"]) if away.get("score") else 0,
-                        "color": team_color(league, away_id),
-                    },
+                    "espn_game_id": game["espn_game_id"],
+                    "league": comp.get("league", ""),
+                    "stage": game.get("stage"),
+                    "state": "post" if game["is_complete"] else "pre",
+                    "is_draw": game.get("is_draw", False),
+                    "status_detail": "FT" if game["is_complete"] else "",
+                    "home": {"id": game["home_team_id"], "abbr": str(game["home_team_id"]),
+                             "name": "", "score": game["home_score"], "color": home_color},
+                    "away": {"id": game["away_team_id"], "abbr": str(game["away_team_id"]),
+                             "name": "", "score": game["away_score"], "color": away_color},
                 })
     return by_date
 
 
-def fetch_live_games():
-    """Return in-progress playoff games with current scores and status."""
+def fetch_live_games(competitions):
+    """Return in-progress games across the given competitions with current
+    scores and status. Each row is tagged with its competition's league."""
     out = []
-    for base, league in [(ESPN_NBA_BASE, "nba"), (ESPN_NHL_BASE, "nhl")]:
+    for comp in competitions or []:
+        base = (f"https://site.api.espn.com/apis/site/v2/sports/"
+                f"{comp['espn_sport']}/{comp['espn_slug']}")
         try:
-            r = requests.get(f"{base}/scoreboard", timeout=8).json()
+            data = requests.get(f"{base}/scoreboard", headers={"User-Agent": "Mozilla/5.0"},
+                                timeout=8).json()
         except Exception:
             continue
-        for ev in r.get("events", []):
-            if ev.get("season", {}).get("type", 0) != 3:
-                continue
-            comp = ev["competitions"][0]
-            s = comp["status"]["type"]
+        for ev in data.get("events", []):
+            comp_node = ev["competitions"][0]
+            s = comp_node["status"]["type"]
             if s.get("state") != "in":
                 continue
-            home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
-            away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
+            home = next(c for c in comp_node["competitors"] if c["homeAway"] == "home")
+            away = next(c for c in comp_node["competitors"] if c["homeAway"] == "away")
             out.append({
-                "league": league,
+                "league": comp.get("league", ""),
                 "status": s.get("shortDetail", ""),
                 "home_abbr": home["team"].get("abbreviation", "?"),
                 "home_name": home["team"].get("displayName", "?"),
-                "home_score": int(home["score"]) if home.get("score") else 0,
+                "home_score": int(home["score"]) if str(home.get("score", "")).isdigit() else 0,
                 "away_abbr": away["team"].get("abbreviation", "?"),
                 "away_name": away["team"].get("displayName", "?"),
-                "away_score": int(away["score"]) if away.get("score") else 0,
+                "away_score": int(away["score"]) if str(away.get("score", "")).isdigit() else 0,
             })
     return out
 
