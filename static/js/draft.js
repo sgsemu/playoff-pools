@@ -86,7 +86,17 @@ function appendPick(pickOrder, teamName) {
     const log = document.getElementById("draft-log");
     const entry = document.createElement("div");
     entry.className = "pick-entry";
-    entry.innerHTML = `<span class="pick-num">#${pickOrder}</span> <span class="pick-team">${teamName}</span>`;
+    // Build with textContent so a manager display name can't inject markup.
+    const num = document.createElement("span");
+    num.className = "pick-num";
+    num.textContent = `#${pickOrder}`;
+    const mgr = document.createElement("span");
+    mgr.className = "pick-member";
+    mgr.textContent = typeof CURRENT_USER_NAME !== "undefined" ? CURRENT_USER_NAME : "";
+    const team = document.createElement("span");
+    team.className = "pick-team";
+    team.textContent = teamName;
+    entry.append(num, mgr, team);
     log.prepend(entry);
 }
 

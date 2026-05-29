@@ -77,7 +77,6 @@
         {% for pick in picks %}
         <div class="pick-entry">
             <span class="pick-num">#{{ pick.pick_order }}</span>
-            <span class="pick-round">R{{ pick.round }}</span>
             {% for m in members if m.id == pick.member_id %}
                 <span class="pick-member">{{ m.users.display_name }}</span>
             {% endfor %}
@@ -150,6 +149,7 @@
 {% block scripts %}
 <script>
     const POOL_ID = "{{ pool.id }}";
+    const CURRENT_USER_NAME = {{ session.get('display_name', '') | tojson }};
     const SUPABASE_URL = "{{ config.SUPABASE_URL }}";
     const SUPABASE_KEY = "{{ config.SUPABASE_KEY }}";
 </script>
