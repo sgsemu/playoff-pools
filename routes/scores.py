@@ -84,54 +84,14 @@ def live_scores_json(pool_id):
 
 
 def _sync_completed_games():
-    """Fetch ESPN, insert any completed playoff games not already stored,
-    and update team win/loss tallies. Returns the count of newly inserted
-    game_results rows."""
+    """Sync completed games for every competition linked to a pool. Returns the
+    count of newly inserted game_results rows."""
+    from services.sync import sync_competition_results, competitions_for_active_pools
     sb = get_service_client()
-    nba_ids = {t["id"] for t in sb.table("nba_teams").select("id").execute().data}
-    nhl_ids = {t["id"] for t in sb.table("nhl_teams").select("id").execute().data}
-    new_count = 0
-
-    for games, league, team_ids, teams_table in [
-        (fetch_scoreboard(), "nba", nba_ids, "nba_teams"),
-        (fetch_nhl_scoreboard(), "nhl", nhl_ids, "nhl_teams"),
-    ]:
-        for game in games:
-            if not game["is_complete"]:
-                continue
-            if game["home_team_id"] not in team_ids or game["away_team_id"] not in team_ids:
-                continue
-            existing = sb.table("game_results").select("id").eq(
-                "espn_game_id", game["espn_game_id"]
-            ).execute().data
-            if existing:
-                continue
-
-            sb.table("game_results").insert({
-                "espn_game_id": game["espn_game_id"],
-                "home_team_id": game["home_team_id"],
-                "away_team_id": game["away_team_id"],
-                "home_score": game["home_score"],
-                "away_score": game["away_score"],
-                "round": 1,
-                "league": league,
-                "game_date": today_et().isoformat(),
-            }).execute()
-
-            winner_id = game["home_team_id"] if game["home_score"] > game["away_score"] else game["away_team_id"]
-            loser_id = game["away_team_id"] if winner_id == game["home_team_id"] else game["home_team_id"]
-            try:
-                w = sb.table(teams_table).select("playoff_wins").eq("id", winner_id).execute().data
-                l = sb.table(teams_table).select("playoff_losses").eq("id", loser_id).execute().data
-                if w:
-                    sb.table(teams_table).update({"playoff_wins": w[0]["playoff_wins"] + 1}).eq("id", winner_id).execute()
-                if l:
-                    sb.table(teams_table).update({"playoff_losses": l[0]["playoff_losses"] + 1}).eq("id", loser_id).execute()
-            except Exception:
-                pass
-            new_count += 1
-
-    return new_count
+    total = 0
+    for comp in competitions_for_active_pools(sb):
+        total += sync_competition_results(sb, comp)
+    return total
 
 
 # Process-level throttle so polling doesn't hammer ESPN. Vercel Fluid Compute
