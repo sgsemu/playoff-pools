@@ -11,17 +11,6 @@
         </div>
     </div>
 
-    <!-- Invite link: only during pre-draft (nobody joins after the draft closes). -->
-    {% if pool.creator_id == session.get('user_id') and pool.draft_status != 'complete' %}
-    <div class="invite-box">
-        <label>Invite Link</label>
-        <div class="invite-link-row">
-            <input type="text" value="{{ config.APP_URL }}/join/{{ pool.invite_code }}" readonly id="invite-link">
-            <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('invite-link').value)">Copy</button>
-        </div>
-    </div>
-    {% endif %}
-
     <!-- Commissioner: add people you've played with before (pre-draft only). -->
     {% if pool.creator_id == session.get('user_id') and pool.draft_status == 'pending' and addable_players %}
     <div class="add-players-box">
@@ -71,7 +60,6 @@
         {% elif pool.type == 'salary_cap' and pool.draft_status != 'complete' %}
             <a href="/pool/{{ pool.id }}/roster" class="btn btn-primary">Pick Your Roster</a>
         {% endif %}
-        <a href="/pool/{{ pool.id }}/scores" class="btn btn-secondary">Game Results</a>
     </div>
 
 <script>
@@ -95,7 +83,29 @@ function deletePool() {
         else { alert(data.error || "Failed to delete pool"); }
     });
 }
+function selectCalendarDay(dateKey, btn) {
+    const wrap = btn.closest('.calendar');
+    wrap.dataset.activeDate = dateKey;
+    wrap.querySelectorAll('.day-games').forEach(el => {
+        el.style.display = el.dataset.date === dateKey ? '' : 'none';
+    });
+    wrap.querySelectorAll('.day-tab').forEach(el => {
+        el.classList.toggle('active', el.dataset.date === dateKey);
+    });
+}
 </script>
+
+    <!-- Games (calendar + Refresh; previously its own /scores page). -->
+    <div class="games-section-header">
+        <h2 class="section-title" style="margin:0;">Games</h2>
+        <form method="POST" action="/pool/{{ pool.id }}/scores/refresh" style="margin:0;">
+            <button type="submit" class="btn btn-refresh">🔄 Refresh</button>
+        </form>
+    </div>
+    <p class="section-subtitle">Best sportsbook odds for each game · tap a game for the full breakdown.</p>
+    <div id="calendar-wrapper">
+        {% include "pool/_calendar.html" %}
+    </div>
 
     <!-- Standings -->
     <h2 class="section-title">Standings</h2>
@@ -103,16 +113,14 @@ function deletePool() {
         {% include "pool/_standings_table.html" %}
     </div>
 
-    <!-- Members (hidden once the draft is complete; Standings covers it) -->
-    {% if pool.draft_status != 'complete' %}
-    <h2 class="section-title">Members ({{ members | length }})</h2>
-    <div class="members-list">
-        {% for m in members %}
-        <div class="member-row">
-            <span>{{ m.users.display_name }}</span>
-            {% if m.role == 'creator' %}<span class="badge badge-creator">Creator</span>{% endif %}
+    <!-- Invite link: moved to bottom; creator-only, pre-complete. -->
+    {% if pool.creator_id == session.get('user_id') and pool.draft_status != 'complete' %}
+    <div class="invite-box" style="margin-top:24px;">
+        <label>Invite Link</label>
+        <div class="invite-link-row">
+            <input type="text" value="{{ config.APP_URL }}/join/{{ pool.invite_code }}" readonly id="invite-link">
+            <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('invite-link').value)">Copy</button>
         </div>
-        {% endfor %}
     </div>
     {% endif %}
 
@@ -124,4 +132,5 @@ function deletePool() {
 </div>
 <script src="{{ url_for('static', filename='js/live-pulse.js') }}"></script>
 <script src="{{ url_for('static', filename='js/standings-refresh.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calendar-refresh.js') }}"></script>
 {% endblock %}

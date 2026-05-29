@@ -187,6 +187,15 @@ def pool_home(pool_id):
 
     standings, member_teams = build_standings_view(pool_id)
 
+    from routes.scores import _pool_competitions, _active_calendar_date
+    from services.espn_api import fetch_calendar_games
+    from services.odds import enrich_calendar_with_best_odds
+    from services.bookmakers import bookmakers_by_key
+    comps = _pool_competitions(sb, pool_id)
+    calendar = fetch_calendar_games(comps, days_back=7, days_forward=21)
+    enrich_calendar_with_best_odds(calendar)
+    active_date = _active_calendar_date(calendar)
+
     wc_easter_egg = None
     pool_comp_ids = get_pool_competition_ids(sb, pool_id)
     if pool_comp_ids:
@@ -200,8 +209,10 @@ def pool_home(pool_id):
     if pool["creator_id"] == session["user_id"] and pool["draft_status"] == "pending":
         addable_players = get_addable_players(sb, pool_id, session["user_id"])
 
-    return render_template("pool/home.html", pool=pool, members=members,
+    return render_template("pool/home.html", pool=pool, pool_id=pool_id, members=members,
         standings=standings, member_teams=member_teams,
+        calendar=calendar, active_date=active_date,
+        bookmakers_by_key=bookmakers_by_key(),
         addable_players=addable_players,
         wc_easter_egg=wc_easter_egg)
 
