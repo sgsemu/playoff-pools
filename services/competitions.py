@@ -27,3 +27,17 @@ def get_draftable_teams(sb, pool_id):
     return sb.table("teams").select("*").in_(
         "competition_id", competition_ids
     ).execute().data
+
+
+def get_team(sb, team_ref):
+    """Return a single team row by its id, or None."""
+    rows = sb.table("teams").select("*").eq("id", team_ref).execute().data
+    return rows[0] if rows else None
+
+
+def teams_by_ref(sb, refs):
+    """Return {team_id: team_row} for the given team ids. {} for empty input."""
+    if not refs:
+        return {}
+    rows = sb.table("teams").select("*").in_("id", list(refs)).execute().data
+    return {r["id"]: r for r in rows}
