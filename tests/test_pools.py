@@ -251,3 +251,35 @@ def test_join_pool_rejects_when_draft_started(mock_sb, authed_client):
     resp = authed_client.get("/join/ABC123", follow_redirects=False)
     assert resp.status_code == 302
     assert "/dashboard" in resp.headers.get("Location", "")
+
+
+@patch("routes.pools.wc_slot")
+@patch("routes.pools.build_standings_view", lambda *a, **k: ([], {}))
+@patch("routes.pools.get_service_client")
+def test_pool_home_passes_wc_slot_for_world_cup_pool(mock_sb, mock_slot, authed_client):
+    mock_slot.return_value = {
+        "countdown": {"days": 5, "hours": 0},
+        "matchday": None,
+        "quote": {"text": "x", "author": "y"},
+    }
+
+    def table(name):
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "pool-1", "name": "WC", "type": "draft", "creator_id": "test-uuid",
+                 "draft_status": "pending", "buy_in": ""}]
+        elif name == "pool_members":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"competition_id": "c-wc"}]
+        elif name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = [
+                {"id": "c-wc", "league": "world_cup"}]
+        return t
+
+    mock_sb.return_value.table.side_effect = table
+    resp = authed_client.get("/pool/pool-1")
+    assert resp.status_code == 200
+    assert b"World Cup" in resp.data or b"days" in resp.data
+    mock_slot.assert_called_once()

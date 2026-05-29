@@ -2,6 +2,9 @@ import secrets
 from flask import Blueprint, render_template, request, redirect, session, flash, jsonify
 from routes.auth import login_required
 from services.supabase_client import get_service_client
+from services.easter_eggs import wc_slot
+from services.competitions import get_pool_competition_ids
+from routes.scores import build_standings_view
 
 pools_bp = Blueprint("pools", __name__)
 
@@ -182,8 +185,16 @@ def pool_home(pool_id):
         m["users"] = user_data[0] if user_data else {"display_name": "Unknown", "email": ""}
         members.append(m)
 
-    from routes.scores import build_standings_view
     standings, member_teams = build_standings_view(pool_id)
+
+    wc_easter_egg = None
+    pool_comp_ids = get_pool_competition_ids(sb, pool_id)
+    if pool_comp_ids:
+        comps = sb.table("competitions").select("*").in_("id", pool_comp_ids).execute().data
+        for c in comps:
+            wc_easter_egg = wc_slot(sb, c)
+            if wc_easter_egg:
+                break
 
     addable_players = []
     if pool["creator_id"] == session["user_id"] and pool["draft_status"] == "pending":
@@ -191,7 +202,8 @@ def pool_home(pool_id):
 
     return render_template("pool/home.html", pool=pool, members=members,
         standings=standings, member_teams=member_teams,
-        addable_players=addable_players)
+        addable_players=addable_players,
+        wc_easter_egg=wc_easter_egg)
 
 
 @pools_bp.route("/pool/<pool_id>/members/add", methods=["POST"])

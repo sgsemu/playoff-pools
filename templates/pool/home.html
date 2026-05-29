@@ -38,6 +38,30 @@
     </div>
     {% endif %}
 
+    {% if wc_easter_egg %}
+    <div class="wc-slot">
+        <div class="wc-slot-row">
+            {% if wc_easter_egg.countdown %}
+            <div class="wc-slot-headline">
+                <span class="wc-slot-eyebrow">Kickoff</span>
+                <strong>{{ wc_easter_egg.countdown.days }} day{{ '' if wc_easter_egg.countdown.days == 1 else 's' }}</strong>
+                <span class="wc-slot-sub">to the World Cup</span>
+            </div>
+            {% elif wc_easter_egg.matchday %}
+            <div class="wc-slot-headline">
+                <span class="wc-slot-eyebrow">Matchday</span>
+                <strong>{{ wc_easter_egg.matchday }}</strong>
+                <span class="wc-slot-sub">in progress</span>
+            </div>
+            {% endif %}
+            <div class="wc-slot-quote">
+                <span>"{{ wc_easter_egg.quote.text }}"</span>
+                <span class="wc-slot-author">— {{ wc_easter_egg.quote.author }}</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Primary action only. Destructive action lives at the page footer. -->
     <div class="pool-actions">
         {% if pool.type in ('draft', 'auction') and pool.draft_status != 'complete' %}
