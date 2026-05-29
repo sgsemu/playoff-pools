@@ -82,6 +82,7 @@
     <div class="team-grid" id="teams-{{ group.competition.id }}">
         {% for team in group.available %}
         <button class="team-card" data-team-ref="{{ team.id }}"
+                {% if not meta.is_my_turn %}disabled aria-label="Wait for your turn"{% endif %}
                 onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}')">
             <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else (team.grouping or '') }}</div>
             <div class="team-name">{{ team.abbreviation }}</div>
@@ -125,7 +126,6 @@
                     {% for pick in picks if pick.member_id == m.id %}
                     <li class="roster-team" data-pick-id="{{ pick.id }}">
                         <span class="roster-team-name">{{ pick.team_name }}</span>
-                        <button class="btn-remove" type="button" onclick="removePick('{{ pick.id }}')" aria-label="Remove {{ pick.team_name }}">×</button>
                     </li>
                     {% else %}
                     <li class="roster-empty">No teams yet</li>

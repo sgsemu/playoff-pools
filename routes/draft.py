@@ -116,9 +116,12 @@ def _build_meta_bar(members, picks, snake, current_pick_index, viewer_user_id, u
             "pick_order": lp.get("pick_order"),
         }
 
+    is_my_turn = picks_until_turn == 0
+
     return {
         "upcoming": upcoming,
         "picks_until_turn": picks_until_turn,
+        "is_my_turn": is_my_turn,
         "current_display_name": current_display_name,
         "current_initial": current_initial,
         "current_color": current_color,
