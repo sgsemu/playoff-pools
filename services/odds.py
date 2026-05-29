@@ -5,6 +5,11 @@ enough at this resolution for a friends pool. With ~4 sport keys polled at
 worst once every 6 hours, monthly usage stays well inside the 500/month
 free tier.
 
+A secondary source, OddsPapi, supplies Caesars odds (which The Odds API
+doesn't currently return for our sports). When OddsPapi has a Caesars line
+that beats the best Odds API price, the chip falls to Caesars + the user's
+Caesars referral link.
+
 Public API:
     fetch_odds(league)         -> list[event_dict]   (raw Odds API events)
     best_by_outcome(event)     -> {outcome_name: {price, book_key, book_name}}
@@ -155,6 +160,153 @@ def get_event_for_game(game):
     return idx.get((h, a))
 
 
+# ---------------------------------------------------------------------------
+# OddsPapi (secondary source) — currently used to fill in Caesars odds since
+# The Odds API doesn't return Caesars for our sports right now. Add new
+# leagues here as we find their OddsPapi sportId + tournamentId.
+
+_ODDSPAPI_BASE = "https://api.oddspapi.io/v4"
+_ODDSPAPI_BOOK = "caesars"      # which OddsPapi bookmaker we're after
+_ODDSPAPI_MARKET = 101          # 1X2 moneyline market id
+_ODDSPAPI_OUTCOMES = {101: "home", 102: "draw", 103: "away"}
+
+_ODDSPAPI = {
+    "world_cup": {"sport_id": 10, "tournament_ids": [16]},
+    # NBA / NHL tournament ids TBD — once added, Caesars supplement kicks in
+    # automatically for those competitions too.
+}
+
+_OP_PARTICIPANTS_CACHE = {}      # {sport_id: (ts, {id_str: name})}
+_OP_ODDS_CACHE = {}              # {league: (ts, fixtures_list)}
+_OP_TTL = 6 * 3600
+
+
+def _oddspapi_get(path, params):
+    api_key = os.environ.get("ODDSPAPI_API_KEY", "").strip()
+    if not api_key:
+        return None, "no-key"
+    params = dict(params or {})
+    params["apiKey"] = api_key
+    try:
+        resp = requests.get(f"{_ODDSPAPI_BASE}{path}", params=params, timeout=10)
+        if resp.status_code != 200:
+            return None, f"http-{resp.status_code}"
+        return resp.json(), None
+    except Exception as exc:
+        return None, f"err-{exc}"
+
+
+def _oddspapi_participants(sport_id):
+    """Cached `{id_str: name}` map for an OddsPapi sport. Returns {} on error."""
+    now = time.time()
+    cached = _OP_PARTICIPANTS_CACHE.get(sport_id)
+    if cached and now - cached[0] < _OP_TTL:
+        return cached[1]
+    data, _err = _oddspapi_get("/participants", {"sportId": sport_id})
+    if not isinstance(data, dict):
+        return cached[1] if cached else {}
+    _OP_PARTICIPANTS_CACHE[sport_id] = (now, data)
+    return data
+
+
+def _fetch_oddspapi_caesars(league):
+    """Cached list of Caesars odds fixtures for a league, or []."""
+    cfg = _ODDSPAPI.get(league)
+    if not cfg or not cfg.get("tournament_ids"):
+        return []
+    now = time.time()
+    cached = _OP_ODDS_CACHE.get(league)
+    if cached and now - cached[0] < _OP_TTL:
+        return cached[1]
+    fixtures = []
+    for tid in cfg["tournament_ids"]:
+        data, _err = _oddspapi_get("/odds-by-tournaments", {
+            "tournamentIds": tid,
+            "bookmaker": _ODDSPAPI_BOOK,
+            "marketIds": _ODDSPAPI_MARKET,
+            "oddsFormat": "american",
+        })
+        if isinstance(data, list):
+            fixtures.extend(data)
+    _OP_ODDS_CACHE[league] = (now, fixtures)
+    return fixtures
+
+
+def _caesars_price_int(fixture, outcome_id):
+    """Pull the American moneyline price (int) for an OddsPapi outcome, or None."""
+    try:
+        outcome = (fixture.get("bookmakerOdds", {})
+                          .get(_ODDSPAPI_BOOK, {})
+                          .get("markets", {})
+                          .get(str(_ODDSPAPI_MARKET), {})
+                          .get("outcomes", {})
+                          .get(str(outcome_id), {})
+                          .get("players", {})
+                          .get("0", {}))
+        if not outcome.get("active"):
+            return None
+        return int(outcome["priceAmerican"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _caesars_index_for_league(league):
+    """Return {(home_norm, away_norm): {home_name, away_name, prices}} for the
+    Caesars fixtures we have. Both orientations indexed."""
+    fixtures = _fetch_oddspapi_caesars(league)
+    if not fixtures:
+        return {}
+    cfg = _ODDSPAPI[league]
+    names = _oddspapi_participants(cfg["sport_id"])
+    idx = {}
+    for fx in fixtures:
+        p1 = str(fx.get("participant1Id") or "")
+        p2 = str(fx.get("participant2Id") or "")
+        home_name = names.get(p1)
+        away_name = names.get(p2)
+        if not home_name or not away_name:
+            continue
+        entry = {
+            "home_name": home_name,
+            "away_name": away_name,
+            "home_price": _caesars_price_int(fx, 101),
+            "draw_price": _caesars_price_int(fx, 102),
+            "away_price": _caesars_price_int(fx, 103),
+        }
+        h, a = _norm(home_name), _norm(away_name)
+        idx[(h, a)] = entry
+        idx[(a, h)] = entry
+    return idx
+
+
+def _maybe_promote_caesars(best, league, odds_api_event):
+    """If OddsPapi has a Caesars line for this game that beats the current best
+    for any outcome, overwrite that outcome in `best`. Mutates `best`."""
+    idx = _caesars_index_for_league(league)
+    if not idx:
+        return
+    home_name = odds_api_event.get("home_team") or ""
+    away_name = odds_api_event.get("away_team") or ""
+    entry = idx.get((_norm(home_name), _norm(away_name)))
+    if not entry:
+        return
+    # Reconcile orientation: OddsPapi's "home" may be Odds API's "away".
+    swap = _norm(entry["home_name"]) == _norm(away_name)
+    proposals = {
+        away_name if swap else home_name: entry["home_price"],
+        home_name if swap else away_name: entry["away_price"],
+        "Draw": entry["draw_price"],
+    }
+    caesars_payload = {"book_key": "caesars", "book_name": "Caesars Sportsbook"}
+    for outcome_name, american_price in proposals.items():
+        if american_price is None:
+            continue
+        new_dec = _decimal(american_price)
+        existing = best.get(outcome_name)
+        if existing is None or new_dec > _decimal(existing["price"]):
+            best[outcome_name] = {"price": american_price, **caesars_payload}
+
+
 def enrich_calendar_with_best_odds(calendar):
     """Attach `best_odds = {home, away, draw}` to each game in `calendar` (in
     place). Mutates the input. Games without a matching Odds API event get
@@ -178,6 +330,7 @@ def enrich_calendar_with_best_odds(calendar):
             if not ev:
                 continue
             best = best_by_outcome(ev)
+            _maybe_promote_caesars(best, league, ev)
             home_team = ev.get("home_team")
             away_team = ev.get("away_team")
             # The Odds API home_team / away_team may be assigned the opposite
