@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.scoring import calculate_team_scores, calculate_salary_cap_scores
-from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, fetch_calendar_games, today_et
+from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, fetch_calendar_games, today_et, fetch_group_winners
 from services.quotes import quote_of_the_day
 from services.team_colors import team_color
 
@@ -187,7 +187,7 @@ def build_standings_view(pool_id):
             "abbreviation": t["abbreviation"],
             "name": t["name"],
             "wins": team_wins.get((t["competition_id"], t["ext_id"]), 0),
-            "color": team_color(t.get("league", ""), t["ext_id"]),
+            "color": (t.get("color") or "").lstrip("#") or team_color(t.get("league", ""), t["ext_id"]),
         })
 
     rows = [{
@@ -214,7 +214,42 @@ def recalculate_standings(pool_id):
     pool = sb.table("pools").select("*").eq("id", pool_id).execute().data[0]
     members = sb.table("pool_members").select("*").eq("pool_id", pool_id).execute().data
 
-    if pool["type"] in ("draft", "auction"):
+    if pool.get("scoring_config", {}).get("type") == "stage_weighted":
+        from services.competitions import get_pool_competition_ids, teams_by_ref
+        from services.scoring import calculate_stage_weighted_scores
+
+        comp_ids = get_pool_competition_ids(sb, pool_id)
+        comps = sb.table("competitions").select("*").in_("id", comp_ids).execute().data if comp_ids else []
+        comp = comps[0] if comps else {}
+        stages = comp.get("stages", [])
+
+        picks = sb.table("draft_picks").select("*").eq("pool_id", pool_id).execute().data
+        team_lookup = teams_by_ref(sb, [p["team_ref"] for p in picks if p.get("team_ref")])
+        ext_by_member = {}
+        for p in picks:
+            t = team_lookup.get(p.get("team_ref"))
+            if t:
+                ext_by_member.setdefault(p["member_id"], []).append(t["ext_id"])
+        member_teams = ext_by_member
+
+        # Per-team results from game_results, keyed by ext_id, with stage + outcome.
+        games = sb.table("game_results").select("*").eq("competition_id", comp.get("id")).execute().data
+        team_results = {}
+        for g in games:
+            stage = g.get("stage")
+            if g.get("is_draw"):
+                team_results.setdefault(g["home_team_id"], []).append((stage, "draw"))
+                team_results.setdefault(g["away_team_id"], []).append((stage, "draw"))
+            else:
+                winner = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
+                loser = g["away_team_id"] if winner == g["home_team_id"] else g["home_team_id"]
+                team_results.setdefault(winner, []).append((stage, "win"))
+                team_results.setdefault(loser, []).append((stage, "loss"))
+
+        group_winners = fetch_group_winners(comp) if comp else set()
+        scores = calculate_stage_weighted_scores(stages, team_results, member_teams, group_winners)
+
+    elif pool["type"] in ("draft", "auction"):
         # Build team_wins from game_results. Key by (league, team_id) because
         # NBA and NHL ESPN ids overlap.
         games = sb.table("game_results").select("*").execute().data
