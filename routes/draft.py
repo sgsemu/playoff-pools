@@ -5,6 +5,7 @@ from services.supabase_client import get_service_client
 from services.competitions import (
     get_pool_competition_ids, get_draftable_teams, get_team, teams_by_ref,
 )
+from services.team_colors import team_logo_url
 
 draft_bp = Blueprint("draft", __name__)
 
@@ -31,6 +32,9 @@ def _build_team_groups(sb, pool_id, taken_refs):
     groups = {}
     for t in teams:
         cid = t["competition_id"]
+        league = meta.get(cid, {}).get("league", "")
+        t = dict(t)
+        t["logo_url"] = team_logo_url(league, t.get("ext_id"))
         g = groups.setdefault(cid, {"competition": meta.get(cid, {"id": cid, "league": "", "name": ""}),
                                     "teams": [], "available": []})
         g["teams"].append(t)
@@ -125,6 +129,7 @@ def _build_meta_bar(members, picks, snake, current_pick_index, viewer_user_id, u
             "team_name": lp.get("team_name") or "?",
             "display_name": _name(lp.get("member_id")),
             "pick_order": lp.get("pick_order"),
+            "logo_url": lp.get("team_logo_url"),
         }
 
     is_my_turn = picks_until_turn == 0
@@ -176,14 +181,22 @@ def draft_room(pool_id):
         "pool_id", pool_id
     ).order("pick_order").execute().data
 
-    # Annotate picks with team name/abbr via team_ref.
+    # Annotate picks with team name/abbr/logo via team_ref.
     pick_refs = [p["team_ref"] for p in picks if p.get("team_ref")]
     team_lookup = teams_by_ref(sb, pick_refs)
+    pick_comp_meta = _competition_meta(
+        sb, {t["competition_id"] for t in team_lookup.values()}
+    )
     taken_refs = set(pick_refs)
     for p in picks:
         team = team_lookup.get(p.get("team_ref"))
         p["team_name"] = team["name"] if team else "?"
         p["team_abbr"] = team["abbreviation"] if team else "?"
+        if team:
+            league = pick_comp_meta.get(team["competition_id"], {}).get("league", "")
+            p["team_logo_url"] = team_logo_url(league, team.get("ext_id"))
+        else:
+            p["team_logo_url"] = None
 
     team_groups = _build_team_groups(sb, pool_id, taken_refs)
 

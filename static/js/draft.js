@@ -65,7 +65,7 @@ async function startDraft() {
     }
 }
 
-async function pickTeam(teamRef, teamName) {
+async function pickTeam(teamRef, teamName, logoUrl) {
     if (!confirm(`Pick ${teamName}?`)) return;
     const resp = await fetch(`/pool/${POOL_ID}/draft/pick`, {
         method: "POST",
@@ -76,13 +76,13 @@ async function pickTeam(teamRef, teamName) {
     if (resp.ok) {
         const btn = document.querySelector(`[data-team-ref="${teamRef}"]`);
         if (btn) btn.remove();
-        appendPick(data.pick_order, teamName);
+        appendPick(data.pick_order, teamName, logoUrl);
     } else {
         alert(data.error || "Failed to make pick");
     }
 }
 
-function appendPick(pickOrder, teamName) {
+function appendPick(pickOrder, teamName, logoUrl) {
     const log = document.getElementById("draft-log");
     const entry = document.createElement("div");
     entry.className = "pick-entry";
@@ -96,7 +96,16 @@ function appendPick(pickOrder, teamName) {
     const team = document.createElement("span");
     team.className = "pick-team";
     team.textContent = teamName;
-    entry.append(num, mgr, team);
+    if (logoUrl) {
+        const logo = document.createElement("img");
+        logo.className = "pick-logo";
+        logo.src = logoUrl;
+        logo.alt = "";
+        logo.onerror = function () { this.style.display = "none"; };
+        entry.append(num, mgr, logo, team);
+    } else {
+        entry.append(num, mgr, team);
+    }
     log.prepend(entry);
 }
 

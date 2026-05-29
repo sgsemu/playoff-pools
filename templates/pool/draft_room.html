@@ -77,7 +77,11 @@
             <span class="meta-bar-last-manager">{{ meta.last_pick.display_name }}</span>
             <span class="meta-bar-last-sep">·</span>
             <span class="meta-bar-last-team">
+                {% if meta.last_pick.logo_url %}
+                <img class="meta-team-logo-img" src="{{ meta.last_pick.logo_url }}" alt="" onerror="this.style.display='none'">
+                {% else %}
                 <span class="meta-team-logo" aria-hidden="true"></span>
+                {% endif %}
                 <strong>{{ meta.last_pick.team_name }}</strong>
             </span>
         </div>
@@ -94,7 +98,8 @@
         {% for team in group.available %}
         <button class="team-card" data-team-ref="{{ team.id }}"
                 {% if not meta.is_my_turn %}disabled aria-label="Wait for your turn"{% endif %}
-                onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}')">
+                onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
+            {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
             <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else (team.grouping or '') }}</div>
             <div class="team-name">{{ team.abbreviation }}</div>
             <div class="team-full">{{ team.name }}</div>
@@ -119,6 +124,7 @@
             {% for m in members if m.id == pick.member_id %}
                 <span class="pick-member">{{ m.users.display_name }}</span>
             {% endfor %}
+            {% if pick.team_logo_url %}<img class="pick-logo" src="{{ pick.team_logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
             <span class="pick-team">{{ pick.team_name }}</span>
         </div>
         {% endfor %}

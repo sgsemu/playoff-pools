@@ -47,3 +47,17 @@ def team_color(league, team_id):
     """Primary hex color (no #) for a (league, team_id). Returns a muted
     gray fallback if the team isn't in the table."""
     return TEAM_COLORS.get(league, {}).get(team_id, _DEFAULT)["color"]
+
+
+# ESPN CDN path segment per competition league. Soccer-based competitions
+# (e.g. world_cup) live under "soccer"; pro leagues use their own slug.
+_LOGO_PATH = {"nba": "nba", "nhl": "nhl", "world_cup": "soccer"}
+
+
+def team_logo_url(league, ext_id):
+    """ESPN CDN logo URL for a team. Returns None for unknown leagues or a
+    missing ext_id so callers can render a placeholder."""
+    path = _LOGO_PATH.get(league)
+    if not path or not ext_id:
+        return None
+    return f"https://a.espncdn.com/i/teamlogos/{path}/500/{ext_id}.png"
