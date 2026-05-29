@@ -530,8 +530,11 @@ a.best-line-book:hover { background: #353550; }
 .best-line-book-flat { opacity: 0.65; }
 
 .books-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px; margin-bottom: 24px;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px; margin-bottom: 24px;
+}
+@media (max-width: 640px) {
+    .books-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .book-card {
     background: #1a1a2e; border: 1px solid #2a2a3e;
@@ -557,6 +560,7 @@ a.best-line-book:hover { background: #353550; }
 }
 .book-card-outcome { color: #aaa; }
 .book-card-price { color: #e0e0e0; font-weight: 700; }
+.book-card-empty { color: #555; font-style: italic; justify-content: center; }
 
 .odds-compliance {
     color: #666; font-size: 0.75rem; line-height: 1.5;

@@ -60,10 +60,12 @@
     </div>
 
     <h2 class="section-title">All sportsbooks</h2>
+    {# Iterate the canonical bookmakers order so the card order is stable. #}
+    {% set books_by_key = {} %}
+    {% for b in odds_event.bookmakers %}{% set _ = books_by_key.update({b.key: b}) %}{% endfor %}
     <div class="books-grid">
-        {% for book in odds_event.bookmakers %}
-        {% set bb = bookmakers_by_key.get(book.key) %}
-        {% if bb %}
+        {% for bb in bookmakers %}
+        {% set book = books_by_key.get(bb.key) %}
         <div class="book-card" style="border-top:3px solid {{ bb.color }};">
             <div class="book-card-header">
                 <img class="odds-chip-fav" src="{{ bb.favicon }}" alt="" onerror="this.style.display='none'">
@@ -73,6 +75,7 @@
                 {% endif %}
             </div>
             <ul class="book-card-lines">
+                {% if book %}
                 {% for market in book.markets %}
                 {% if market.key == 'h2h' %}
                 {% for o in market.outcomes %}
@@ -83,9 +86,11 @@
                 {% endfor %}
                 {% endif %}
                 {% endfor %}
+                {% else %}
+                <li class="book-card-line book-card-empty">No line</li>
+                {% endif %}
             </ul>
         </div>
-        {% endif %}
         {% endfor %}
     </div>
 

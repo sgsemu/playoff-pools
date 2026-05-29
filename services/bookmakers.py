@@ -11,18 +11,18 @@ import os
 
 _BOOKS = [
     {
-        "key": "fanduel",
-        "name": "FanDuel",
-        "color": "#1493FF",
-        "domain": "fanduel.com",
-        "referral_env": ("FANDUEL_REFERRAL_URL",),
-    },
-    {
         "key": "draftkings",
         "name": "DraftKings",
         "color": "#53D337",
         "domain": "draftkings.com",
         "referral_env": ("DRAFTKINGS_REFERRAL_URL",),
+    },
+    {
+        "key": "caesars",
+        "name": "Caesars",
+        "color": "#A0843C",
+        "domain": "caesars.com",
+        "referral_env": ("CAESARS_REFERRAL_URL", "CEASARS_REFERRAL_URL"),
     },
     {
         "key": "betmgm",
@@ -32,11 +32,11 @@ _BOOKS = [
         "referral_env": ("BETMGM_REFERRAL_URL",),
     },
     {
-        "key": "caesars",
-        "name": "Caesars",
-        "color": "#A0843C",
-        "domain": "caesars.com",
-        "referral_env": ("CAESARS_REFERRAL_URL", "CEASARS_REFERRAL_URL"),
+        "key": "fanduel",
+        "name": "FanDuel",
+        "color": "#1493FF",
+        "domain": "fanduel.com",
+        "referral_env": ("FANDUEL_REFERRAL_URL",),
     },
 ]
 
