@@ -35,10 +35,14 @@ _SPORT_KEY = {
 # ESPN display name (lowercased) -> Odds API team name (also lowercased).
 # Anything not in here is matched verbatim.
 _NAME_ALIASES = {
-    "usa": "united states",
     "türkiye": "turkey",
-    "south korea": "korea republic",
     "côte d'ivoire": "ivory coast",
+    "czechia": "czech republic",
+    "bosnia-herzegovina": "bosnia & herzegovina",
+    # Defensive aliases — both sides apply, so they remain harmless if naming
+    # already agrees (current state for these four):
+    "usa": "united states",
+    "south korea": "korea republic",
 }
 
 

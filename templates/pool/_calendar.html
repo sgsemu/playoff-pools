@@ -52,11 +52,13 @@
                        onclick="event.stopPropagation();"
                        title="Best line: {{ g.best_odds.away.book_name }}">
                         <img class="odds-chip-fav" src="{{ b.favicon }}" alt="" onerror="this.style.display='none'">
+                        <span class="odds-chip-book">{{ b.name }}</span>
                         <span class="odds-chip-price">{% if g.best_odds.away.price > 0 %}+{% endif %}{{ g.best_odds.away.price }}</span>
                     </a>
                     {% else %}
                     <span class="odds-chip" title="Best line: {{ g.best_odds.away.book_name }}">
                         <img class="odds-chip-fav" src="{{ b.favicon }}" alt="" onerror="this.style.display='none'">
+                        <span class="odds-chip-book">{{ b.name }}</span>
                         <span class="odds-chip-price">{% if g.best_odds.away.price > 0 %}+{% endif %}{{ g.best_odds.away.price }}</span>
                     </span>
                     {% endif %}
@@ -75,11 +77,13 @@
                        onclick="event.stopPropagation();"
                        title="Best line: {{ g.best_odds.home.book_name }}">
                         <img class="odds-chip-fav" src="{{ b.favicon }}" alt="" onerror="this.style.display='none'">
+                        <span class="odds-chip-book">{{ b.name }}</span>
                         <span class="odds-chip-price">{% if g.best_odds.home.price > 0 %}+{% endif %}{{ g.best_odds.home.price }}</span>
                     </a>
                     {% else %}
                     <span class="odds-chip" title="Best line: {{ g.best_odds.home.book_name }}">
                         <img class="odds-chip-fav" src="{{ b.favicon }}" alt="" onerror="this.style.display='none'">
+                        <span class="odds-chip-book">{{ b.name }}</span>
                         <span class="odds-chip-price">{% if g.best_odds.home.price > 0 %}+{% endif %}{{ g.best_odds.home.price }}</span>
                     </span>
                     {% endif %}
