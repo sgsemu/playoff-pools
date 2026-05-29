@@ -7,6 +7,8 @@ from services.scoring import calculate_team_scores, calculate_salary_cap_scores
 from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, fetch_calendar_games, today_et, fetch_group_winners
 from services.quotes import quote_of_the_day
 from services.team_colors import team_color
+from services.odds import enrich_calendar_with_best_odds, get_event_for_game, best_by_outcome
+from services.bookmakers import bookmakers_by_key, bookmakers
 
 
 def _pool_competitions(sb, pool_id):
@@ -42,11 +44,14 @@ def game_scores(pool_id):
     standings, member_teams = build_standings_view(pool_id)
     comps = _pool_competitions(sb, pool_id)
     calendar = fetch_calendar_games(comps, days_back=7, days_forward=21)
+    enrich_calendar_with_best_odds(calendar)
     active_date = _active_calendar_date(calendar)
 
     return render_template("pool/scores.html",
-        pool=pool, standings=standings, member_teams=member_teams,
+        pool=pool, pool_id=pool["id"],
+        standings=standings, member_teams=member_teams,
         calendar=calendar, active_date=active_date,
+        bookmakers_by_key=bookmakers_by_key(),
         playoff_day=playoff_day_count(), quote=quote_of_the_day())
 
 
@@ -83,9 +88,48 @@ def calendar_partial(pool_id):
     sb = get_service_client()
     comps = _pool_competitions(sb, pool_id)
     calendar = fetch_calendar_games(comps, days_back=7, days_forward=21)
+    enrich_calendar_with_best_odds(calendar)
     active_date = _active_calendar_date(calendar)
     return render_template("pool/_calendar.html",
-        calendar=calendar, active_date=active_date)
+        pool_id=pool_id,
+        calendar=calendar, active_date=active_date,
+        bookmakers_by_key=bookmakers_by_key())
+
+
+@scores_bp.route("/pool/<pool_id>/games/<espn_game_id>")
+@login_required
+def game_detail(pool_id, espn_game_id):
+    sb = get_service_client()
+    pool = sb.table("pools").select("*").eq("id", pool_id).execute().data
+    if not pool:
+        return "Pool not found", 404
+    pool = pool[0]
+
+    comps = _pool_competitions(sb, pool_id)
+    # Wider window for the detail page so a game outside the calendar window
+    # can still be linked to.
+    calendar = fetch_calendar_games(comps, days_back=21, days_forward=30)
+    game = None
+    for date_data in calendar.values():
+        for g in date_data.get("games", []) or []:
+            if g.get("espn_game_id") == espn_game_id:
+                game = g
+                break
+        if game:
+            break
+    if not game:
+        flash("Game not found.", "error")
+        return redirect(f"/pool/{pool_id}/scores")
+
+    odds_event = get_event_for_game(game)
+    best = best_by_outcome(odds_event) if odds_event else {}
+
+    return render_template("pool/game_detail.html",
+        pool=pool, game=game,
+        odds_event=odds_event,
+        best=best,
+        bookmakers=bookmakers(),
+        bookmakers_by_key=bookmakers_by_key())
 
 
 @scores_bp.route("/pool/<pool_id>/scores/live.json")

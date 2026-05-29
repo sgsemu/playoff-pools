@@ -451,3 +451,111 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .pick-toast .btn-primary {
     width: auto; padding: 10px 24px;
 }
+
+/* Calendar best-odds chip (per team row) */
+.game-card-cta {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: #7c6ef0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.odds-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: auto;
+    padding: 4px 10px;
+    background: #2a2a3e;
+    border-radius: 999px;
+    color: #e0e0e0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+a.odds-chip:hover { background: #353550; }
+.odds-chip-fav {
+    width: 16px; height: 16px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+.odds-chip-price { color: #4ade80; }
+
+/* Game detail page */
+.game-detail { max-width: 800px; margin: 0 auto; }
+.back-link {
+    color: #888; text-decoration: none; font-size: 0.9rem;
+    display: inline-block; margin-bottom: 12px;
+}
+.back-link:hover { color: #7c6ef0; }
+.game-detail-header h1 {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 1.5rem; flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.game-detail-logo {
+    width: 36px; height: 36px; object-fit: contain;
+}
+.game-detail-vs {
+    color: #888; font-weight: 400; font-size: 1rem;
+}
+.game-detail-meta {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.best-lines {
+    background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 24px;
+}
+.best-line-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 0; border-bottom: 1px solid #2a2a3e;
+}
+.best-line-row:last-child { border-bottom: none; }
+.best-line-label { font-weight: 600; flex: 1; min-width: 100px; }
+.best-line-price {
+    color: #4ade80; font-weight: 700; font-size: 1.05rem;
+    min-width: 60px;
+}
+.best-line-book {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 6px;
+    background: #2a2a3e; color: #e0e0e0; text-decoration: none;
+    font-size: 0.9rem; font-weight: 600;
+}
+a.best-line-book:hover { background: #353550; }
+.best-line-book-flat { opacity: 0.65; }
+
+.books-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+}
+.book-card {
+    background: #1a1a2e; border: 1px solid #2a2a3e;
+    border-radius: 8px; padding: 12px;
+}
+.book-card-header {
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 8px; border-bottom: 1px solid #2a2a3e;
+    margin-bottom: 8px;
+}
+.book-card-cta {
+    margin-left: auto;
+    color: #7c6ef0; font-size: 0.85rem; text-decoration: none;
+}
+.book-card-cta:hover { text-decoration: underline; }
+.book-card-lines {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.book-card-line {
+    display: flex; justify-content: space-between;
+    font-size: 0.9rem;
+}
+.book-card-outcome { color: #aaa; }
+.book-card-price { color: #e0e0e0; font-weight: 700; }
+
+.odds-compliance {
+    color: #666; font-size: 0.75rem; line-height: 1.5;
+    text-align: center; padding: 12px; border-top: 1px solid #2a2a3e;
+    margin-top: 16px;
+}

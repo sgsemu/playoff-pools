@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ game.away.name }} vs {{ game.home.name }}{% endblock %}
+
+{% block content %}
+<div class="game-detail">
+    <div class="game-detail-header">
+        <a href="/pool/{{ pool.id }}/scores" class="back-link">← Game Results</a>
+        <h1>
+            {% if game.away.logo_url %}<img class="game-detail-logo" src="{{ game.away.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+            <span class="game-detail-team">{{ game.away.name }}</span>
+            <span class="game-detail-vs">vs</span>
+            <span class="game-detail-team">{{ game.home.name }}</span>
+            {% if game.home.logo_url %}<img class="game-detail-logo" src="{{ game.home.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+        </h1>
+        <div class="game-detail-meta">
+            <span class="game-league-badge {{ game.league }}">{{ game.league | upper }}</span>
+            {% if game.stage %}<span class="cal-stage">{{ game.stage | replace('_', ' ') | upper }}</span>{% endif %}
+            <span class="status-pill {{ game.state }}">
+                {% if game.state == 'post' %}Final · {{ game.away.score }}–{{ game.home.score }}
+                {% elif game.state == 'in' %}● Live · {{ game.status_detail }} · {{ game.away.score }}–{{ game.home.score }}
+                {% else %}{{ game.status_detail or "Upcoming" }}
+                {% endif %}
+            </span>
+        </div>
+    </div>
+
+    {% if not odds_event %}
+    <div class="empty-state">
+        <p>No odds available for this game yet.</p>
+        <p style="font-size:0.85rem; color:#666; margin-top:6px;">
+            Odds usually appear closer to game time.
+        </p>
+    </div>
+    {% else %}
+
+    <h2 class="section-title">Best line per outcome</h2>
+    <div class="best-lines">
+        {% set away_name = odds_event.away_team %}
+        {% set home_name = odds_event.home_team %}
+        {% for label, key in [(away_name, away_name), (home_name, home_name), ("Draw", "Draw")] %}
+        {% if best.get(key) %}
+        {% set bb = bookmakers_by_key[best[key].book_key] %}
+        <div class="best-line-row">
+            <span class="best-line-label">{{ label }}</span>
+            <span class="best-line-price">{% if best[key].price > 0 %}+{% endif %}{{ best[key].price }}</span>
+            {% if bb.referral_url %}
+            <a class="best-line-book" href="{{ bb.referral_url }}" target="_blank" rel="noopener noreferrer">
+                <img class="odds-chip-fav" src="{{ bb.favicon }}" alt="" onerror="this.style.display='none'">
+                <span>{{ bb.name }} →</span>
+            </a>
+            {% else %}
+            <span class="best-line-book best-line-book-flat">
+                <img class="odds-chip-fav" src="{{ bb.favicon }}" alt="" onerror="this.style.display='none'">
+                <span>{{ bb.name }}</span>
+            </span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <h2 class="section-title">All sportsbooks</h2>
+    <div class="books-grid">
+        {% for book in odds_event.bookmakers %}
+        {% set bb = bookmakers_by_key.get(book.key) %}
+        {% if bb %}
+        <div class="book-card" style="border-top:3px solid {{ bb.color }};">
+            <div class="book-card-header">
+                <img class="odds-chip-fav" src="{{ bb.favicon }}" alt="" onerror="this.style.display='none'">
+                <strong>{{ bb.name }}</strong>
+                {% if bb.referral_url %}
+                <a class="book-card-cta" href="{{ bb.referral_url }}" target="_blank" rel="noopener noreferrer">Sign up →</a>
+                {% endif %}
+            </div>
+            <ul class="book-card-lines">
+                {% for market in book.markets %}
+                {% if market.key == 'h2h' %}
+                {% for o in market.outcomes %}
+                <li class="book-card-line">
+                    <span class="book-card-outcome">{{ o.name }}</span>
+                    <span class="book-card-price">{% if o.price > 0 %}+{% endif %}{{ o.price }}</span>
+                </li>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <div class="odds-compliance">
+        21+ · Affiliate links — I may earn a commission if you sign up · Gamble responsibly.
+        {% if odds_event.commence_time %}<br>Lines as of last fetch (cached ~6h).{% endif %}
+    </div>
+    {% endif %}
+
+    <a href="/pool/{{ pool.id }}/scores" class="btn btn-secondary" style="margin-top:24px;">Back to Game Results</a>
+</div>
+{% endblock %}

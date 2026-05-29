@@ -23,7 +23,10 @@
         {% if day.games %}
         <div class="games-list">
             {% for g in day.games %}
-            <div class="game-card state-{{ g.state }}" data-league="{{ g.league }}">
+            {% set detail_url = "/pool/" ~ pool_id ~ "/games/" ~ g.espn_game_id %}
+            <div class="game-card state-{{ g.state }}" data-league="{{ g.league }}"
+                 onclick="window.location.href='{{ detail_url }}'"
+                 style="cursor:pointer;">
                 <div class="game-status">
                     <span class="status-pill {{ g.state }}">
                         {% if g.state == 'post' %}Final
@@ -34,6 +37,7 @@
                     <span class="game-league-badge {{ g.league }}">{{ g.league | upper }}</span>
                     {% if g.stage %}<span class="cal-stage">{{ g.stage | replace('_', ' ') | upper }}</span>{% endif %}
                     {% if g.is_draw %}<span class="cal-draw">Draw</span>{% endif %}
+                    <span class="game-card-cta">Full odds →</span>
                 </div>
                 <div class="game-team away {% if g.state == 'post' and g.away.score > g.home.score %}winner{% endif %}"
                      style="border-left-color: #{{ g.away.color }};">
@@ -41,6 +45,22 @@
                     <span class="team-abbr">{{ g.away.abbr }}</span>
                     <span class="team-name">{{ g.away.name }}</span>
                     <span class="team-score">{% if g.state != 'pre' %}{{ g.away.score }}{% endif %}</span>
+                    {% if g.best_odds and g.best_odds.away %}
+                    {% set b = bookmakers_by_key[g.best_odds.away.book_key] %}
+                    {% if b.referral_url %}
+                    <a class="odds-chip" href="{{ b.referral_url }}" target="_blank" rel="noopener noreferrer"
+                       onclick="event.stopPropagation();"
+                       title="Best line: {{ g.best_odds.away.book_name }}">
+                        <img class="odds-chip-fav" src="{{ b.favicon }}" alt="" onerror="this.style.display='none'">
+                        <span class="odds-chip-price">{% if g.best_odds.away.price > 0 %}+{% endif %}{{ g.best_odds.away.price }}</span>
+                    </a>
+                    {% else %}
+                    <span class="odds-chip" title="Best line: {{ g.best_odds.away.book_name }}">
+                        <img class="odds-chip-fav" src="{{ b.favicon }}" alt="" onerror="this.style.display='none'">
+                        <span class="odds-chip-price">{% if g.best_odds.away.price > 0 %}+{% endif %}{{ g.best_odds.away.price }}</span>
+                    </span>
+                    {% endif %}
+                    {% endif %}
                 </div>
                 <div class="game-team home {% if g.state == 'post' and g.home.score > g.away.score %}winner{% endif %}"
                      style="border-left-color: #{{ g.home.color }};">
@@ -48,6 +68,22 @@
                     <span class="team-abbr">{{ g.home.abbr }}</span>
                     <span class="team-name">{{ g.home.name }}</span>
                     <span class="team-score">{% if g.state != 'pre' %}{{ g.home.score }}{% endif %}</span>
+                    {% if g.best_odds and g.best_odds.home %}
+                    {% set b = bookmakers_by_key[g.best_odds.home.book_key] %}
+                    {% if b.referral_url %}
+                    <a class="odds-chip" href="{{ b.referral_url }}" target="_blank" rel="noopener noreferrer"
+                       onclick="event.stopPropagation();"
+                       title="Best line: {{ g.best_odds.home.book_name }}">
+                        <img class="odds-chip-fav" src="{{ b.favicon }}" alt="" onerror="this.style.display='none'">
+                        <span class="odds-chip-price">{% if g.best_odds.home.price > 0 %}+{% endif %}{{ g.best_odds.home.price }}</span>
+                    </a>
+                    {% else %}
+                    <span class="odds-chip" title="Best line: {{ g.best_odds.home.book_name }}">
+                        <img class="odds-chip-fav" src="{{ b.favicon }}" alt="" onerror="this.style.display='none'">
+                        <span class="odds-chip-price">{% if g.best_odds.home.price > 0 %}+{% endif %}{{ g.best_odds.home.price }}</span>
+                    </span>
+                    {% endif %}
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
