@@ -299,3 +299,44 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .roster-card-teams li { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
 .roster-card-team { flex: 1; }
 .roster-card-wins { color: #666; font-weight: 600; font-size: 0.85rem; }
+
+/* Draft meta bar (active draft sticky header) */
+.meta-bar {
+    position: sticky; top: 0; z-index: 50;
+    background: #1a1a2e;
+    border: 1px solid #2a2a3e;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 0 0 16px;
+    display: flex; flex-direction: column; gap: 8px;
+}
+.meta-bar-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.meta-bar-round { font-weight: 700; font-size: 0.95rem; color: #e0e0e0; }
+.meta-bar-up {
+    padding: 4px 10px; border-radius: 999px; font-size: 0.8rem;
+    background: rgba(124,110,240,0.15); color: #b9aeff;
+}
+.meta-bar-up-now { background: rgba(74,222,128,0.18); color: #4ade80; font-weight: 700; }
+.meta-bar-now { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.meta-bar-now-label { color: #888; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.meta-bar-now-name { font-weight: 600; color: #e0e0e0; }
+.meta-bar-upcoming {
+    display: flex; align-items: center; gap: 4px;
+    overflow-x: auto; padding-bottom: 2px;
+}
+.meta-circle {
+    flex: 0 0 auto;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 0.75rem;
+    user-select: none;
+}
+.meta-circle-current {
+    box-shadow: 0 0 0 2px #0f0f1a, 0 0 0 4px #7c6ef0;
+}
+.meta-bar-round-flip {
+    color: #888; font-size: 0.7rem; padding: 0 4px; flex: 0 0 auto;
+}
+.meta-bar-last { color: #888; font-size: 0.8rem; }
+.meta-bar-last strong { color: #e0e0e0; font-weight: 600; }

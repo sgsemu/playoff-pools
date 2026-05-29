@@ -35,17 +35,44 @@
     {% endif %}
 
     {% if pool.draft_status == 'active' %}
-    <!-- Current turn indicator -->
-    <div class="turn-indicator" id="turn-indicator">
+    <!-- Meta bar: round / current pick / upcoming order / last pick -->
+    <section class="meta-bar" id="meta-bar">
+        <div class="meta-bar-top">
+            <div class="meta-bar-round">
+                {% if current_turn %}Round {{ current_turn[1] }} · Pick #{{ current_pick_index + 1 }}{% else %}Draft complete{% endif %}
+            </div>
+            {% if current_turn and meta.picks_until_turn is not none %}
+                {% if meta.picks_until_turn == 0 %}
+                <div class="meta-bar-up meta-bar-up-now">You're up!</div>
+                {% else %}
+                <div class="meta-bar-up">Up in {{ meta.picks_until_turn }} pick{{ '' if meta.picks_until_turn == 1 else 's' }}</div>
+                {% endif %}
+            {% endif %}
+        </div>
+
         {% if current_turn %}
-            {% for m in members if m.id == current_turn[0] %}
-                <span class="turn-name">{{ m.users.display_name }}'s pick</span>
-                <span class="turn-round">Round {{ current_turn[1] }}</span>
+        <div class="meta-bar-now">
+            <span class="meta-bar-now-label">Drafting now</span>
+            <span class="meta-circle meta-circle-current" style="background:{{ meta.current_color }};">{{ meta.current_initial }}</span>
+            <span class="meta-bar-now-name">{{ meta.current_display_name }}</span>
+        </div>
+
+        <div class="meta-bar-upcoming" aria-label="Upcoming picks">
+            {% for slot in meta.upcoming %}
+            <span class="meta-circle{% if slot.is_current %} meta-circle-current{% endif %}"
+                  style="background:{{ slot.color }};"
+                  title="Pick #{{ slot.pick_order }} · {{ slot.display_name }} · R{{ slot.round }}">{{ slot.initial }}</span>
+            {% if not loop.last and meta.upcoming[loop.index].round != slot.round %}
+            <span class="meta-bar-round-flip">↩ R{{ meta.upcoming[loop.index].round }}</span>
+            {% endif %}
             {% endfor %}
-        {% else %}
-            <span>Draft complete!</span>
+        </div>
+
+        {% if meta.last_pick %}
+        <div class="meta-bar-last">Last: <strong>{{ meta.last_pick.team_name }}</strong> · {{ meta.last_pick.display_name }}</div>
         {% endif %}
-    </div>
+        {% endif %}
+    </section>
 
     {% for group in team_groups %}
     {% if group.available %}

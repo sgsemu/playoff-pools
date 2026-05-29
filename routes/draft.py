@@ -50,6 +50,82 @@ def _get_snake_order(member_ids, num_rounds):
     return order
 
 
+_META_PALETTE = ["#ef4444", "#f59e0b", "#10b981", "#3b82f6",
+                 "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"]
+
+
+def _name_color(name):
+    """Deterministic color from display name for the meta-bar initial circles."""
+    h = 0
+    for ch in (name or "?"):
+        h = (h * 31 + ord(ch)) & 0xffffffff
+    return _META_PALETTE[h % len(_META_PALETTE)]
+
+
+def _build_meta_bar(members, picks, snake, current_pick_index, viewer_user_id, upcoming_count=8):
+    """Compute the draft-room meta-bar context: the next N pickers (with initial
+    + color), the viewing user's distance to their next turn, the current
+    picker's name/initial, and the most recent completed pick.
+
+    Returns a dict the template renders. Pure function over its inputs."""
+    by_id = {m["id"]: m for m in members}
+
+    def _name(member_id):
+        m = by_id.get(member_id) or {}
+        return (m.get("users") or {}).get("display_name") or "?"
+
+    upcoming = []
+    for i in range(current_pick_index, min(current_pick_index + upcoming_count, len(snake))):
+        mid, rnd = snake[i]
+        name = _name(mid)
+        upcoming.append({
+            "pick_order": i + 1,
+            "round": rnd,
+            "member_id": mid,
+            "display_name": name,
+            "initial": name[0].upper(),
+            "color": _name_color(name),
+            "is_current": i == current_pick_index,
+        })
+
+    viewer_member_id = next(
+        (m["id"] for m in members if m.get("user_id") == viewer_user_id), None
+    )
+    picks_until_turn = None
+    if viewer_member_id is not None and current_pick_index < len(snake):
+        for i in range(current_pick_index, len(snake)):
+            if snake[i][0] == viewer_member_id:
+                picks_until_turn = i - current_pick_index
+                break
+
+    current_display_name = None
+    current_initial = "?"
+    current_color = _META_PALETTE[0]
+    if current_pick_index < len(snake):
+        cur_id = snake[current_pick_index][0]
+        current_display_name = _name(cur_id)
+        current_initial = current_display_name[0].upper()
+        current_color = _name_color(current_display_name)
+
+    last_pick = None
+    if picks:
+        lp = picks[-1]
+        last_pick = {
+            "team_name": lp.get("team_name") or "?",
+            "display_name": _name(lp.get("member_id")),
+            "pick_order": lp.get("pick_order"),
+        }
+
+    return {
+        "upcoming": upcoming,
+        "picks_until_turn": picks_until_turn,
+        "current_display_name": current_display_name,
+        "current_initial": current_initial,
+        "current_color": current_color,
+        "last_pick": last_pick,
+    }
+
+
 def _order_members_for_draft(members):
     """Sort members by draft_position (nulls last), then joined_at ascending.
 
@@ -105,12 +181,15 @@ def draft_room(pool_id):
     current_pick_index = len(picks)
     current_turn = snake[current_pick_index] if current_pick_index < len(snake) else None
 
+    meta = _build_meta_bar(members, picks, snake, current_pick_index, session.get("user_id"))
+
     template = "pool/draft_room.html" if pool["type"] == "draft" else "pool/auction_room.html"
     return render_template(template,
         pool=pool, members=members, picks=picks,
         team_groups=team_groups,
         current_turn=current_turn,
-        current_pick_index=current_pick_index)
+        current_pick_index=current_pick_index,
+        meta=meta)
 
 
 @draft_bp.route("/pool/<pool_id>/draft/pick", methods=["POST"])
