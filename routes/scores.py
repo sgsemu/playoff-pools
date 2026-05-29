@@ -7,7 +7,7 @@ from services.scoring import calculate_team_scores, calculate_salary_cap_scores
 from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, fetch_calendar_games, today_et, fetch_group_winners
 from services.quotes import quote_of_the_day
 from services.team_colors import team_color
-from services.odds import enrich_calendar_with_best_odds, get_event_for_game, best_by_outcome
+from services.odds import enrich_calendar_with_best_odds, get_event_for_game, best_by_outcome, caesars_bookmaker_for_event
 from services.bookmakers import bookmakers_by_key, bookmakers
 
 
@@ -122,6 +122,11 @@ def game_detail(pool_id, espn_game_id):
         return redirect(f"/pool/{pool_id}/scores")
 
     odds_event = get_event_for_game(game)
+    if odds_event:
+        caesars_book = caesars_bookmaker_for_event(odds_event, game.get("league"))
+        if caesars_book:
+            odds_event = dict(odds_event)
+            odds_event["bookmakers"] = list(odds_event.get("bookmakers", [])) + [caesars_book]
     best = best_by_outcome(odds_event) if odds_event else {}
 
     return render_template("pool/game_detail.html",

@@ -279,6 +279,39 @@ def _caesars_index_for_league(league):
     return idx
 
 
+def caesars_bookmaker_for_event(odds_api_event, league):
+    """Return a Caesars `bookmaker` dict matching The Odds API's shape so the
+    detail-page template can render it alongside the other books. Outcomes are
+    labelled with the Odds API team names so price comparison (best_by_outcome)
+    treats them as the same outcomes. Returns None when no Caesars line is
+    available for this game."""
+    idx = _caesars_index_for_league(league)
+    if not idx:
+        return None
+    home_team = odds_api_event.get("home_team") or ""
+    away_team = odds_api_event.get("away_team") or ""
+    entry = idx.get((_norm(home_team), _norm(away_team)))
+    if not entry:
+        return None
+    swap = _norm(entry["home_name"]) == _norm(away_team)
+    home_price = entry["away_price"] if swap else entry["home_price"]
+    away_price = entry["home_price"] if swap else entry["away_price"]
+    outcomes = []
+    if home_price is not None:
+        outcomes.append({"name": home_team, "price": home_price})
+    if away_price is not None:
+        outcomes.append({"name": away_team, "price": away_price})
+    if entry["draw_price"] is not None:
+        outcomes.append({"name": "Draw", "price": entry["draw_price"]})
+    if not outcomes:
+        return None
+    return {
+        "key": "caesars",
+        "title": "Caesars Sportsbook",
+        "markets": [{"key": "h2h", "outcomes": outcomes}],
+    }
+
+
 def _maybe_promote_caesars(best, league, odds_api_event):
     """If OddsPapi has a Caesars line for this game that beats the current best
     for any outcome, overwrite that outcome in `best`. Mutates `best`."""
