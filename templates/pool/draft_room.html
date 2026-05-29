@@ -94,18 +94,39 @@
     <h2 class="section-title">
         <span class="league-badge league-{{ group.competition.league }}">{{ group.competition.name }}</span> Available Teams
     </h2>
-    <div class="team-grid" id="teams-{{ group.competition.id }}">
-        {% for team in group.available %}
-        <button class="team-card" data-team-ref="{{ team.id }}"
-                {% if not meta.is_my_turn %}disabled aria-label="Wait for your turn"{% endif %}
-                onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
-            {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
-            <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else (team.grouping or '') }}</div>
-            <div class="team-name">{{ team.abbreviation }}</div>
-            <div class="team-full">{{ team.name }}</div>
-        </button>
+    {% if group.subgroups | length > 1 %}
+        {% for sg in group.subgroups %}
+        <h3 class="subgroup-title">
+            {% if sg.label != 'Other' and sg.label | length == 1 %}Group {{ sg.label }}{% else %}{{ sg.label }}{% endif %}
+            <span class="subgroup-count">{{ sg.teams | length }}</span>
+        </h3>
+        <div class="team-grid">
+            {% for team in sg.teams %}
+            <button class="team-card" data-team-ref="{{ team.id }}"
+                    {% if not meta.is_my_turn %}disabled aria-label="Wait for your turn"{% endif %}
+                    onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
+                {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+                <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else '' }}</div>
+                <div class="team-name">{{ team.abbreviation }}</div>
+                <div class="team-full">{{ team.name }}</div>
+            </button>
+            {% endfor %}
+        </div>
         {% endfor %}
-    </div>
+    {% else %}
+        <div class="team-grid" id="teams-{{ group.competition.id }}">
+            {% for team in group.available %}
+            <button class="team-card" data-team-ref="{{ team.id }}"
+                    {% if not meta.is_my_turn %}disabled aria-label="Wait for your turn"{% endif %}
+                    onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
+                {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+                <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else (team.grouping or '') }}</div>
+                <div class="team-name">{{ team.abbreviation }}</div>
+                <div class="team-full">{{ team.name }}</div>
+            </button>
+            {% endfor %}
+        </div>
+    {% endif %}
     {% endif %}
     {% endfor %}
     {% endif %}
@@ -207,5 +228,6 @@
     const SUPABASE_URL = "{{ config.SUPABASE_URL }}";
     const SUPABASE_KEY = "{{ config.SUPABASE_KEY }}";
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/static/js/draft.js"></script>
 {% endblock %}

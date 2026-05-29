@@ -35,11 +35,23 @@ def _build_team_groups(sb, pool_id, taken_refs):
         league = meta.get(cid, {}).get("league", "")
         t = dict(t)
         t["logo_url"] = team_logo_url(league, t.get("ext_id"))
-        g = groups.setdefault(cid, {"competition": meta.get(cid, {"id": cid, "league": "", "name": ""}),
-                                    "teams": [], "available": []})
+        g = groups.setdefault(cid, {
+            "competition": meta.get(cid, {"id": cid, "league": "", "name": ""}),
+            "teams": [], "available": [],
+            "_avail_by_label": {},
+        })
         g["teams"].append(t)
         if t["id"] not in taken_refs:
             g["available"].append(t)
+            label = t.get("grouping") or "Other"
+            g["_avail_by_label"].setdefault(label, []).append(t)
+    # Convert per-competition group dict into ordered subgroup list and sort teams within each.
+    for g in groups.values():
+        g["subgroups"] = [
+            {"label": label, "teams": sorted(sub_teams, key=lambda x: (x.get("seed") or 999, x.get("name") or ""))}
+            for label, sub_teams in sorted(g["_avail_by_label"].items())
+        ]
+        g.pop("_avail_by_label", None)
     return sorted(groups.values(), key=lambda g: g["competition"].get("name", ""))
 
 
