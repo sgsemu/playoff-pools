@@ -71,7 +71,9 @@ def test_create_pool_writes_pool_competitions(mock_sb, authed_client):
     def _side_effect(*args, **_kwargs):
         name = args[0] if args else ""
         t = MagicMock()
-        if name == "pools":
+        if name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = []
+        elif name == "pools":
             t.insert.return_value.execute.return_value.data = [{"id": "pool-1"}]
         elif name == "pool_members":
             t.insert.return_value.execute.return_value.data = [{}]
@@ -89,6 +91,37 @@ def test_create_pool_writes_pool_competitions(mock_sb, authed_client):
     })
     assert resp.status_code in (302, 303)
     assert captured["pool_competitions"] == [{"pool_id": "pool-1", "competition_id": "c-wc"}]
+
+
+@patch("routes.pools.get_service_client")
+def test_create_pool_inherits_stage_weighted_scoring(mock_sb, authed_client):
+    captured = {}
+
+    def _side_effect(*args, **_kwargs):
+        name = args[0] if args else ""
+        t = MagicMock()
+        if name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = [
+                {"scoring_defaults": {"type": "stage_weighted"}}
+            ]
+        elif name == "pools":
+            def _ins(row):
+                captured.update(row)
+                r = MagicMock(); r.execute.return_value.data = [{"id": "pool-1"}]; return r
+            t.insert.side_effect = _ins
+        elif name == "pool_members":
+            t.insert.return_value.execute.return_value.data = [{}]
+        elif name == "pool_competitions":
+            t.insert.return_value.execute.return_value.data = [{}]
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
+    resp = authed_client.post("/pool/create", data={
+        "name": "WC Pool", "type": "draft", "scoring_type": "combo",
+        "competition_ids": "c-wc",
+    })
+    assert resp.status_code in (302, 303)
+    assert captured["scoring_config"] == {"type": "stage_weighted"}
 
 
 @patch("routes.pools.get_service_client")

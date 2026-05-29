@@ -47,6 +47,22 @@ def _build_auction_config(form):
     return config
 
 
+def _inherited_scoring_config(sb, competition_ids):
+    """If a selected competition defines stage-weighted scoring (e.g. the World
+    Cup), return its scoring_defaults so the pool inherits it. Otherwise None,
+    meaning fall back to the NBA/NHL round-based scoring form."""
+    if not competition_ids:
+        return None
+    comps = sb.table("competitions").select("scoring_defaults").in_(
+        "id", competition_ids
+    ).execute().data
+    for c in comps:
+        sd = c.get("scoring_defaults") or {}
+        if sd.get("type") == "stage_weighted":
+            return sd
+    return None
+
+
 @pools_bp.route("/dashboard")
 @login_required
 def dashboard():
@@ -72,7 +88,7 @@ def dashboard():
 def create_pool():
     if request.method == "GET":
         sb = get_service_client()
-        comps = sb.table("competitions").select("id,name,league").eq(
+        comps = sb.table("competitions").select("id,name,league,scoring_defaults").eq(
             "status", "active"
         ).order("name").execute().data
         return render_template("pool/create.html", competitions=comps)
@@ -80,8 +96,10 @@ def create_pool():
     sb = get_service_client()
     invite_code = secrets.token_urlsafe(8)
     pool_type = request.form["type"]
+    competition_ids = [c for c in request.form.getlist("competition_ids") if c]
 
-    scoring_config = _build_scoring_config(request.form)
+    inherited = _inherited_scoring_config(sb, competition_ids)
+    scoring_config = inherited if inherited is not None else _build_scoring_config(request.form)
     auction_config = _build_auction_config(request.form) if pool_type == "auction" else {}
 
     pool = sb.table("pools").insert({
@@ -106,7 +124,6 @@ def create_pool():
         "role": "creator"
     }).execute()
 
-    competition_ids = [c for c in request.form.getlist("competition_ids") if c]
     if competition_ids:
         sb.table("pool_competitions").insert(
             [{"pool_id": pool["id"], "competition_id": cid} for cid in competition_ids]
