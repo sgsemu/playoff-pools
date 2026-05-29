@@ -44,6 +44,8 @@ _NAME_ALIASES = {
     "côte d'ivoire": "ivory coast",
     "czechia": "czech republic",
     "bosnia-herzegovina": "bosnia & herzegovina",
+    "curaçao": "curacao",          # ESPN: no cedilla; OddsAPI: with cedilla
+    "congo dr": "dr congo",        # ESPN: word order swapped from OddsAPI
     # Defensive aliases — both sides apply, so they remain harmless if naming
     # already agrees (current state for these four):
     "usa": "united states",
