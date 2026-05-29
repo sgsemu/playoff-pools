@@ -1,33 +1,14 @@
 // draft.js — Live draft real-time client using Supabase Realtime
 
-function updateAssignTeams() {
-    const leagueSelect = document.getElementById("assign-league");
-    const teamSelect = document.getElementById("assign-team");
-    if (!leagueSelect || !teamSelect) return;
-    const league = leagueSelect.value;
-    const data = document.getElementById(league + "-teams-data");
-    if (!data) return;
-    const teams = JSON.parse(data.textContent || "[]");
-    teamSelect.innerHTML = "";
-    teams.forEach((t) => {
-        const opt = document.createElement("option");
-        opt.value = t.id;
-        opt.dataset.league = league;
-        opt.textContent = t.name;
-        teamSelect.appendChild(opt);
-    });
-}
-
 async function assignPick() {
     const memberId = document.getElementById("assign-member").value;
-    const league = document.getElementById("assign-league").value;
-    const teamId = document.getElementById("assign-team").value;
+    const teamRef = document.getElementById("assign-team").value;
     const errorEl = document.getElementById("assign-error");
     if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
     const resp = await fetch(`/pool/${POOL_ID}/draft/assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ member_id: memberId, team_id: Number(teamId), league }),
+        body: JSON.stringify({ member_id: memberId, team_ref: teamRef }),
     });
     if (resp.ok) {
         location.reload();
@@ -84,30 +65,28 @@ async function startDraft() {
     }
 }
 
-async function pickTeam(teamId, league, teamName) {
-    if (!confirm(`Pick ${teamName} (${league.toUpperCase()})?`)) return;
-
+async function pickTeam(teamRef, teamName) {
+    if (!confirm(`Pick ${teamName}?`)) return;
     const resp = await fetch(`/pool/${POOL_ID}/draft/pick`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ team_id: teamId, league: league })
+        body: JSON.stringify({ team_ref: teamRef })
     });
-
     const data = await resp.json();
     if (resp.ok) {
-        const btn = document.querySelector(`[data-team-id="${teamId}"][data-league="${league}"]`);
+        const btn = document.querySelector(`[data-team-ref="${teamRef}"]`);
         if (btn) btn.remove();
-        appendPick(data.pick_order, league, teamName);
+        appendPick(data.pick_order, teamName);
     } else {
         alert(data.error || "Failed to make pick");
     }
 }
 
-function appendPick(pickOrder, league, teamName) {
+function appendPick(pickOrder, teamName) {
     const log = document.getElementById("draft-log");
     const entry = document.createElement("div");
     entry.className = "pick-entry";
-    entry.innerHTML = `<span class="pick-num">#${pickOrder}</span> <span class="pick-league badge badge-${league}">${league.toUpperCase()}</span> <span class="pick-team">${teamName}</span>`;
+    entry.innerHTML = `<span class="pick-num">#${pickOrder}</span> <span class="pick-team">${teamName}</span>`;
     log.prepend(entry);
 }
 

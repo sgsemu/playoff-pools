@@ -47,37 +47,23 @@
         {% endif %}
     </div>
 
-    <!-- NBA Teams -->
-    {% if nba_available %}
+    {% for group in team_groups %}
+    {% if group.available %}
     <h2 class="section-title">
-        <span class="league-badge league-nba">NBA</span> Available Teams
+        <span class="league-badge league-{{ group.competition.league }}">{{ group.competition.name }}</span> Available Teams
     </h2>
-    <div class="team-grid" id="nba-teams">
-        {% for team in nba_available %}
-        <button class="team-card team-nba" data-team-id="{{ team.id }}" data-league="nba" onclick="pickTeam({{ team.id }}, 'nba', '{{ team.name }}')">
-            <div class="team-seed">#{{ team.seed or '?' }}</div>
+    <div class="team-grid" id="teams-{{ group.competition.id }}">
+        {% for team in group.available %}
+        <button class="team-card" data-team-ref="{{ team.id }}"
+                onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}')">
+            <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else (team.grouping or '') }}</div>
             <div class="team-name">{{ team.abbreviation }}</div>
             <div class="team-full">{{ team.name }}</div>
         </button>
         {% endfor %}
     </div>
     {% endif %}
-
-    <!-- NHL Teams -->
-    {% if nhl_available %}
-    <h2 class="section-title">
-        <span class="league-badge league-nhl">NHL</span> Available Teams
-    </h2>
-    <div class="team-grid" id="nhl-teams">
-        {% for team in nhl_available %}
-        <button class="team-card team-nhl" data-team-id="{{ team.id }}" data-league="nhl" onclick="pickTeam({{ team.id }}, 'nhl', '{{ team.name }}')">
-            <div class="team-seed">#{{ team.seed or '?' }}</div>
-            <div class="team-name">{{ team.abbreviation }}</div>
-            <div class="team-full">{{ team.name }}</div>
-        </button>
-        {% endfor %}
-    </div>
-    {% endif %}
+    {% endfor %}
     {% endif %}
 
     <!-- Draft log -->
@@ -95,7 +81,6 @@
             {% for m in members if m.id == pick.member_id %}
                 <span class="pick-member">{{ m.users.display_name }}</span>
             {% endfor %}
-            <span class="pick-league badge badge-{{ pick.league or 'nba' }}">{{ (pick.league or 'nba') | upper }}</span>
             <span class="pick-team">{{ pick.team_name }}</span>
         </div>
         {% endfor %}
@@ -113,7 +98,6 @@
                 <ul class="roster-teams">
                     {% for pick in picks if pick.member_id == m.id %}
                     <li class="roster-team" data-pick-id="{{ pick.id }}">
-                        <span class="badge badge-{{ pick.league or 'nba' }}">{{ (pick.league or 'nba') | upper }}</span>
                         <span class="roster-team-name">{{ pick.team_name }}</span>
                         <button class="btn-remove" type="button" onclick="removePick('{{ pick.id }}')" aria-label="Remove {{ pick.team_name }}">×</button>
                     </li>
@@ -135,16 +119,14 @@
                         {% endfor %}
                     </select>
                 </label>
-                <label>League
-                    <select id="assign-league" onchange="updateAssignTeams()">
-                        <option value="nba">NBA</option>
-                        <option value="nhl">NHL</option>
-                    </select>
-                </label>
                 <label>Team
                     <select id="assign-team">
-                        {% for team in nba_available %}
-                        <option value="{{ team.id }}" data-league="nba">{{ team.name }}</option>
+                        {% for group in team_groups %}
+                        <optgroup label="{{ group.competition.name }}">
+                            {% for team in group.available %}
+                            <option value="{{ team.id }}">{{ team.name }}</option>
+                            {% endfor %}
+                        </optgroup>
                         {% endfor %}
                     </select>
                 </label>
@@ -159,12 +141,6 @@
         </div>
     </section>
 
-    <script id="nhl-teams-data" type="application/json">
-        {{ nhl_available | tojson }}
-    </script>
-    <script id="nba-teams-data" type="application/json">
-        {{ nba_available | tojson }}
-    </script>
     {% endif %}
 </div>
 

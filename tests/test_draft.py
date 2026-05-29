@@ -29,26 +29,40 @@ def _mock_pool(pool_type="draft", draft_status="active", draft_mode="live"):
 
 @patch("routes.draft.get_service_client")
 def test_draft_room_loads(mock_sb, authed_client):
-    mock_table = MagicMock()
-    mock_sb.return_value.table.return_value = mock_table
-    # Pool lookup
-    mock_table.select.return_value.eq.return_value.execute.return_value.data = [_mock_pool()]
-    # Members
-    mock_table.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+    pool = _mock_pool()
+
+    def _side_effect(*args, **_kwargs):
+        name = args[0] if args else ""
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [pool]
+        elif name == "pool_members":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+        elif name == "draft_picks":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+        elif name == "teams":
+            t.select.return_value.in_.return_value.execute.return_value.data = []
+            t.select.return_value.eq.return_value.execute.return_value.data = []
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = []
+        elif name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = []
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
 
     resp = authed_client.get("/pool/pool-1/draft")
     assert resp.status_code == 200
 
 
-def _pick_tables_side_effect(pool, members, picks, nba_teams=None, nhl_teams=None):
+def _pick_tables_side_effect(pool, members, picks, teams=None, competition_id="c-1"):
     """Per-table mock factory for make_pick tests.
 
     make_pick touches pools, pool_members (by user_id and ordered by joined_at),
-    draft_picks, and both team tables. Returning the right shape per table is
+    pool_competitions, teams, draft_picks. Returning the right shape per table is
     easier than threading chained return_values.
     """
-    nba_teams = nba_teams or []
-    nhl_teams = nhl_teams or []
+    teams = teams or []
 
     def _side_effect(*args, **_kwargs):
         name = args[0] if args else ""
@@ -60,13 +74,20 @@ def _pick_tables_side_effect(pool, members, picks, nba_teams=None, nhl_teams=Non
                 m for m in members if m.get("user_id") == "user-1"
             ]
             t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = members
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"competition_id": competition_id}
+            ]
+        elif name == "teams":
+            # get_team: .select(*).eq("id", ref).execute()
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                tm for tm in teams if tm.get("competition_id") == competition_id
+            ]
+            # get_draftable_teams (via get_pool_competition_ids -> in_): .select(*).in_(...).execute()
+            t.select.return_value.in_.return_value.execute.return_value.data = teams
         elif name == "draft_picks":
             t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = picks
             t.insert.return_value.execute.return_value.data = [{"id": "pick-new"}]
-        elif name == "nba_teams":
-            t.select.return_value.order.return_value.execute.return_value.data = nba_teams
-        elif name == "nhl_teams":
-            t.select.return_value.order.return_value.execute.return_value.data = nhl_teams
         return t
 
     return _side_effect
@@ -77,10 +98,11 @@ def test_make_pick(mock_sb, authed_client):
     pool = _mock_pool()
     members = [{"id": "member-1", "user_id": "user-1", "draft_position": 1, "joined_at": "2026-04-01"}]
     mock_sb.return_value.table.side_effect = _pick_tables_side_effect(
-        pool, members, picks=[], nba_teams=[{"id": 1, "name": "A", "seed": 1}],
+        pool, members, picks=[],
+        teams=[{"id": "t1", "name": "A", "competition_id": "c-1", "league": "nba"}],
     )
 
-    resp = authed_client.post("/pool/pool-1/draft/pick", json={"nba_team_id": 1, "league": "nba"})
+    resp = authed_client.post("/pool/pool-1/draft/pick", json={"team_ref": "t1"})
     assert resp.status_code == 200
 
 
@@ -88,12 +110,13 @@ def test_make_pick(mock_sb, authed_client):
 def test_cannot_pick_already_taken_team(mock_sb, authed_client):
     pool = _mock_pool()
     members = [{"id": "member-1", "user_id": "user-1", "draft_position": 1, "joined_at": "2026-04-01"}]
-    picks = [{"nba_team_id": 1, "team_id": 1, "league": "nba", "member_id": "member-2", "pick_order": 1, "round": 1}]
+    picks = [{"team_ref": "t1", "league": "nba", "member_id": "member-2", "pick_order": 1, "round": 1}]
     mock_sb.return_value.table.side_effect = _pick_tables_side_effect(
-        pool, members, picks, nba_teams=[{"id": 1, "name": "A", "seed": 1}],
+        pool, members, picks,
+        teams=[{"id": "t1", "name": "A", "competition_id": "c-1", "league": "nba"}],
     )
 
-    resp = authed_client.post("/pool/pool-1/draft/pick", json={"nba_team_id": 1, "league": "nba"})
+    resp = authed_client.post("/pool/pool-1/draft/pick", json={"team_ref": "t1"})
     assert resp.status_code == 400
 
 
@@ -103,7 +126,7 @@ def test_make_pick_rejects_inactive_draft(mock_sb, authed_client):
     members = [{"id": "member-1", "user_id": "user-1", "draft_position": 1, "joined_at": "2026-04-01"}]
     mock_sb.return_value.table.side_effect = _pick_tables_side_effect(pool, members, picks=[])
 
-    resp = authed_client.post("/pool/pool-1/draft/pick", json={"nba_team_id": 1, "league": "nba"})
+    resp = authed_client.post("/pool/pool-1/draft/pick", json={"team_ref": "t1"})
     assert resp.status_code == 409
 
 
@@ -117,10 +140,13 @@ def test_make_pick_rejects_out_of_turn(mock_sb, authed_client):
     ]
     mock_sb.return_value.table.side_effect = _pick_tables_side_effect(
         pool, members, picks=[],
-        nba_teams=[{"id": 1, "name": "A", "seed": 1}, {"id": 2, "name": "B", "seed": 2}],
+        teams=[
+            {"id": "t1", "name": "A", "competition_id": "c-1", "league": "nba"},
+            {"id": "t2", "name": "B", "competition_id": "c-1", "league": "nba"},
+        ],
     )
 
-    resp = authed_client.post("/pool/pool-1/draft/pick", json={"nba_team_id": 2, "league": "nba"})
+    resp = authed_client.post("/pool/pool-1/draft/pick", json={"team_ref": "t2"})
     assert resp.status_code == 403
 
 
@@ -226,8 +252,12 @@ def test_assign_pick_happy_path(mock_sb, authed_client):
             t.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{"id": "m1"}]
             # .eq(pool_id) for num_members count
             t.select.return_value.eq.return_value.execute.return_value.data = [{"id": "m1"}, {"id": "m2"}]
-        elif name == "nba_teams":
-            t.select.return_value.eq.return_value.execute.return_value.data = [{"id": 5}]
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"competition_id": "c-1"}]
+        elif name == "teams":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "t5", "competition_id": "c-1", "name": "Team5", "league": "nba"}
+            ]
         elif name == "draft_picks":
             t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
             t.insert.return_value.execute.return_value.data = [{"id": "pick-new"}]
@@ -236,7 +266,7 @@ def test_assign_pick_happy_path(mock_sb, authed_client):
     mock_sb.return_value.table.side_effect = _side_effect
 
     resp = authed_client.post("/pool/pool-1/draft/assign", json={
-        "member_id": "m1", "team_id": 5, "league": "nba",
+        "member_id": "m1", "team_ref": "t5",
     })
     assert resp.status_code == 200
 
@@ -252,18 +282,22 @@ def test_assign_pick_rejects_taken_team(mock_sb, authed_client):
             t.select.return_value.eq.return_value.execute.return_value.data = [pool]
         elif name == "pool_members":
             t.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{"id": "m1"}]
-        elif name == "nba_teams":
-            t.select.return_value.eq.return_value.execute.return_value.data = [{"id": 5}]
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"competition_id": "c-1"}]
+        elif name == "teams":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "t5", "competition_id": "c-1", "name": "Team5", "league": "nba"}
+            ]
         elif name == "draft_picks":
             t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
-                {"team_id": 5, "nba_team_id": 5, "league": "nba", "pick_order": 1},
+                {"team_ref": "t5", "pick_order": 1},
             ]
         return t
 
     mock_sb.return_value.table.side_effect = _side_effect
 
     resp = authed_client.post("/pool/pool-1/draft/assign", json={
-        "member_id": "m1", "team_id": 5, "league": "nba",
+        "member_id": "m1", "team_ref": "t5",
     })
     assert resp.status_code == 400
 
@@ -340,3 +374,104 @@ def test_set_draft_order_happy_path(mock_sb, authed_client):
     assert len(update_calls) == 2
     assert update_calls[0][0][0] == {"draft_position": 1}
     assert update_calls[1][0][0] == {"draft_position": 2}
+
+
+@patch("routes.draft.get_service_client")
+def test_draft_room_groups_teams_by_competition(mock_sb, authed_client):
+    pool = _mock_pool(draft_status="active")
+
+    def _side_effect(*args, **_kwargs):
+        name = args[0] if args else ""
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [pool]
+        elif name == "pool_members":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+                {"id": "m1", "user_id": "user-1", "draft_position": 1, "joined_at": "2026-04-01"}
+            ]
+        elif name == "users":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"display_name": "Test User"}]
+        elif name == "draft_picks":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"competition_id": "c-wc"}]
+        elif name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = [
+                {"id": "c-wc", "league": "world_cup", "name": "FIFA World Cup 2026"}
+            ]
+        elif name == "teams":
+            t.select.return_value.in_.return_value.execute.return_value.data = [
+                {"id": "t1", "competition_id": "c-wc", "ext_id": 202, "name": "Argentina",
+                 "abbreviation": "ARG", "grouping": None, "seed": None},
+            ]
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
+    resp = authed_client.get("/pool/pool-1/draft")
+    assert resp.status_code == 200
+
+
+@patch("routes.draft.get_service_client")
+def test_make_pick_stores_team_ref(mock_sb, authed_client):
+    pool = _mock_pool()
+    members = [{"id": "member-1", "user_id": "user-1", "draft_position": 1, "joined_at": "2026-04-01"}]
+    captured = {}
+
+    def _side_effect(*args, **_kwargs):
+        name = args[0] if args else ""
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [pool]
+        elif name == "pool_members":
+            t.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [members[0]]
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = members
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"competition_id": "c-wc"}]
+        elif name == "teams":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "t1", "competition_id": "c-wc", "name": "Argentina"}
+            ]
+            t.select.return_value.in_.return_value.execute.return_value.data = [
+                {"id": "t1", "competition_id": "c-wc", "name": "Argentina"}
+            ]
+        elif name == "draft_picks":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+            def _insert(row):
+                captured.update(row)
+                r = MagicMock(); r.execute.return_value.data = [{"id": "pick-new"}]; return r
+            t.insert.side_effect = _insert
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
+    resp = authed_client.post("/pool/pool-1/draft/pick", json={"team_ref": "t1"})
+    assert resp.status_code == 200
+    assert captured["team_ref"] == "t1"
+    assert "nba_team_id" not in captured  # legacy int omitted
+
+
+@patch("routes.draft.get_service_client")
+def test_make_pick_rejects_team_outside_pool_competitions(mock_sb, authed_client):
+    pool = _mock_pool()
+    members = [{"id": "member-1", "user_id": "user-1", "draft_position": 1, "joined_at": "2026-04-01"}]
+
+    def _side_effect(*args, **_kwargs):
+        name = args[0] if args else ""
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [pool]
+        elif name == "pool_members":
+            t.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [members[0]]
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = members
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [{"competition_id": "c-wc"}]
+        elif name == "teams":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "t9", "competition_id": "c-OTHER", "name": "Intruder"}
+            ]
+        elif name == "draft_picks":
+            t.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
+    resp = authed_client.post("/pool/pool-1/draft/pick", json={"team_ref": "t9"})
+    assert resp.status_code == 400

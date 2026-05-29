@@ -2,19 +2,41 @@ import random
 from flask import Blueprint, render_template, request, jsonify, session
 from routes.auth import login_required
 from services.supabase_client import get_service_client
+from services.competitions import (
+    get_pool_competition_ids, get_draftable_teams, get_team, teams_by_ref,
+)
 
 draft_bp = Blueprint("draft", __name__)
 
 
-def _get_all_teams(sb):
-    """Fetch both NBA and NHL teams, tagged with league."""
-    nba = sb.table("nba_teams").select("*").order("seed").execute().data
-    for t in nba:
-        t["league"] = "nba"
-    nhl = sb.table("nhl_teams").select("*").order("seed").execute().data
-    for t in nhl:
-        t["league"] = "nhl"
-    return nba + nhl
+def _competition_meta(sb, competition_ids):
+    """Return {competition_id: {id, league, name}} for the given ids."""
+    if not competition_ids:
+        return {}
+    rows = sb.table("competitions").select("id,league,name").in_(
+        "id", list(competition_ids)
+    ).execute().data
+    return {r["id"]: r for r in rows}
+
+
+def _build_team_groups(sb, pool_id, taken_refs):
+    """Group a pool's draftable teams by competition, splitting taken vs available.
+
+    Returns a list of {competition, teams, available} dicts, ordered by the
+    competition name, so a single-competition pool yields one group and a
+    combined NBA+NHL pool yields two.
+    """
+    teams = get_draftable_teams(sb, pool_id)
+    meta = _competition_meta(sb, {t["competition_id"] for t in teams})
+    groups = {}
+    for t in teams:
+        cid = t["competition_id"]
+        g = groups.setdefault(cid, {"competition": meta.get(cid, {"id": cid, "league": "", "name": ""}),
+                                    "teams": [], "available": []})
+        g["teams"].append(t)
+        if t["id"] not in taken_refs:
+            g["available"].append(t)
+    return sorted(groups.values(), key=lambda g: g["competition"].get("name", ""))
 
 
 def _get_snake_order(member_ids, num_rounds):
@@ -64,24 +86,20 @@ def draft_room(pool_id):
         "pool_id", pool_id
     ).order("pick_order").execute().data
 
-    all_teams = _get_all_teams(sb)
-    team_lookup = {(t["league"], t["id"]): t for t in all_teams}
-    # Build taken set: (league, team_id) and annotate picks with team name/abbr
-    taken = set()
+    # Annotate picks with team name/abbr via team_ref.
+    pick_refs = [p["team_ref"] for p in picks if p.get("team_ref")]
+    team_lookup = teams_by_ref(sb, pick_refs)
+    taken_refs = set(pick_refs)
     for p in picks:
-        league = p.get("league", "nba")
-        team_id = p.get("team_id") or p.get("nba_team_id")
-        taken.add((league, team_id))
-        team = team_lookup.get((league, team_id))
-        p["team_name"] = team["name"] if team else f"{league.upper()} {team_id}"
-        p["team_abbr"] = team["abbreviation"] if team else str(team_id)
+        team = team_lookup.get(p.get("team_ref"))
+        p["team_name"] = team["name"] if team else "?"
+        p["team_abbr"] = team["abbreviation"] if team else "?"
 
-    nba_available = [t for t in all_teams if t["league"] == "nba" and ("nba", t["id"]) not in taken]
-    nhl_available = [t for t in all_teams if t["league"] == "nhl" and ("nhl", t["id"]) not in taken]
+    team_groups = _build_team_groups(sb, pool_id, taken_refs)
 
-    # Determine whose turn it is
+    # Whose turn (snake order over the ordered member list).
     member_ids = [m["id"] for m in members]
-    total_teams = len(all_teams)
+    total_teams = sum(len(g["teams"]) for g in team_groups)
     num_rounds = max(1, total_teams // len(members)) if members else 1
     snake = _get_snake_order(member_ids, num_rounds)
     current_pick_index = len(picks)
@@ -90,7 +108,7 @@ def draft_room(pool_id):
     template = "pool/draft_room.html" if pool["type"] == "draft" else "pool/auction_room.html"
     return render_template(template,
         pool=pool, members=members, picks=picks,
-        nba_available=nba_available, nhl_available=nhl_available,
+        team_groups=team_groups,
         current_turn=current_turn,
         current_pick_index=current_pick_index)
 
@@ -114,33 +132,32 @@ def make_pick(pool_id):
         return jsonify({"error": "Not a member"}), 403
     member = member[0]
 
-    data = request.get_json()
-    team_id = data.get("team_id") or data.get("nba_team_id")
-    league = data.get("league", "nba")
+    data = request.get_json(silent=True) or {}
+    team_ref = data.get("team_ref")
+    if not team_ref:
+        return jsonify({"error": "team_ref is required"}), 400
+
+    comp_ids = set(get_pool_competition_ids(sb, pool_id))
+    team = get_team(sb, team_ref)
+    if not team or team["competition_id"] not in comp_ids:
+        return jsonify({"error": "Team is not in this pool's competitions"}), 400
 
     picks = sb.table("draft_picks").select("*").eq(
         "pool_id", pool_id
     ).order("pick_order").execute().data
+    if any(p.get("team_ref") == team_ref for p in picks):
+        return jsonify({"error": "Team already taken"}), 400
 
-    for p in picks:
-        p_league = p.get("league", "nba")
-        p_team_id = p.get("team_id") or p.get("nba_team_id")
-        if p_league == league and p_team_id == team_id:
-            return jsonify({"error": "Team already taken"}), 400
-
-    all_members = sb.table("pool_members").select("*").eq(
-        "pool_id", pool_id
-    ).order("joined_at").execute().data
-    all_members = _order_members_for_draft(all_members)
+    all_members = _order_members_for_draft(
+        sb.table("pool_members").select("*").eq("pool_id", pool_id).order("joined_at").execute().data
+    )
     member_ids = [m["id"] for m in all_members]
-    num_members = len(member_ids)
-    if num_members == 0:
+    if not member_ids:
         return jsonify({"error": "No members in pool"}), 409
 
-    all_teams = _get_all_teams(sb)
-    num_rounds = max(1, len(all_teams) // num_members)
+    all_team_count = len(get_draftable_teams(sb, pool_id))
+    num_rounds = max(1, all_team_count // len(member_ids))
     snake = _get_snake_order(member_ids, num_rounds)
-
     pick_order = len(picks) + 1
     if pick_order > len(snake):
         return jsonify({"error": "Draft is complete"}), 409
@@ -148,15 +165,18 @@ def make_pick(pool_id):
     if expected_member_id != member["id"]:
         return jsonify({"error": "Not your turn"}), 403
 
-    sb.table("draft_picks").insert({
-        "pool_id": pool_id,
-        "member_id": member["id"],
-        "nba_team_id": team_id,
-        "team_id": team_id,
-        "league": league,
-        "pick_order": pick_order,
-        "round": current_round,
-    }).execute()
+    try:
+        sb.table("draft_picks").insert({
+            "pool_id": pool_id,
+            "member_id": member["id"],
+            "team_ref": team_ref,
+            "league": team.get("league", ""),
+            "pick_order": pick_order,
+            "round": current_round,
+        }).execute()
+    except Exception:
+        # Unique index (pool_id, team_ref) — concurrent duplicate pick.
+        return jsonify({"error": "Team already taken"}), 400
 
     return jsonify({"success": True, "pick_order": pick_order})
 
@@ -227,41 +247,40 @@ def assign_pick(pool_id):
 
     data = request.get_json(silent=True) or {}
     member_id = data.get("member_id")
-    team_id = data.get("team_id")
-    league = data.get("league", "nba")
-    if not member_id or team_id is None or league not in ("nba", "nhl"):
-        return jsonify({"error": "member_id, team_id, and league are required"}), 400
+    team_ref = data.get("team_ref")
+    if not member_id or not team_ref:
+        return jsonify({"error": "member_id and team_ref are required"}), 400
 
     member = sb.table("pool_members").select("id").eq("id", member_id).eq("pool_id", pool_id).execute().data
     if not member:
         return jsonify({"error": "Member not in pool"}), 400
 
-    team_table = "nba_teams" if league == "nba" else "nhl_teams"
-    team = sb.table(team_table).select("id").eq("id", team_id).execute().data
-    if not team:
-        return jsonify({"error": "Team not found"}), 400
+    comp_ids = set(get_pool_competition_ids(sb, pool_id))
+    team = get_team(sb, team_ref)
+    if not team or team["competition_id"] not in comp_ids:
+        return jsonify({"error": "Team is not in this pool's competitions"}), 400
 
     picks = sb.table("draft_picks").select("*").eq(
         "pool_id", pool_id
     ).order("pick_order").execute().data
-    for p in picks:
-        if (p.get("league", "nba") == league and (p.get("team_id") or p.get("nba_team_id")) == team_id):
-            return jsonify({"error": "Team already drafted"}), 400
+    if any(p.get("team_ref") == team_ref for p in picks):
+        return jsonify({"error": "Team already drafted"}), 400
 
-    all_members = sb.table("pool_members").select("id").eq("pool_id", pool_id).execute().data
-    num_members = max(1, len(all_members))
+    num_members = max(1, len(sb.table("pool_members").select("id").eq("pool_id", pool_id).execute().data))
     pick_order = (max((p["pick_order"] for p in picks), default=0)) + 1
     current_round = ((pick_order - 1) // num_members) + 1
 
-    sb.table("draft_picks").insert({
-        "pool_id": pool_id,
-        "member_id": member_id,
-        "nba_team_id": team_id,
-        "team_id": team_id,
-        "league": league,
-        "pick_order": pick_order,
-        "round": current_round,
-    }).execute()
+    try:
+        sb.table("draft_picks").insert({
+            "pool_id": pool_id,
+            "member_id": member_id,
+            "team_ref": team_ref,
+            "league": team.get("league", ""),
+            "pick_order": pick_order,
+            "round": current_round,
+        }).execute()
+    except Exception:
+        return jsonify({"error": "Team already drafted"}), 400
 
     return jsonify({"success": True, "pick_order": pick_order})
 
