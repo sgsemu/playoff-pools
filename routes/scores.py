@@ -9,6 +9,14 @@ from services.quotes import quote_of_the_day
 from services.team_colors import team_color
 
 
+def _pool_competitions(sb, pool_id):
+    from services.competitions import get_pool_competition_ids
+    ids = get_pool_competition_ids(sb, pool_id)
+    if not ids:
+        return []
+    return sb.table("competitions").select("*").in_("id", ids).execute().data
+
+
 def playoff_day_count():
     """Day N of playoffs, measured from the earliest completed game in the DB.
     Returns 0 if no games have been synced yet."""
@@ -32,7 +40,8 @@ def game_scores(pool_id):
     pool = pool[0]
 
     standings, member_teams = build_standings_view(pool_id)
-    calendar = fetch_calendar_games(days_back=7, days_forward=7)
+    comps = _pool_competitions(sb, pool_id)
+    calendar = fetch_calendar_games(comps, days_back=7, days_forward=7)
     active_date = _active_calendar_date(calendar)
 
     return render_template("pool/scores.html",
@@ -71,7 +80,9 @@ def standings_partial(pool_id):
 @login_required
 def calendar_partial(pool_id):
     maybe_auto_sync(throttle_seconds=120)
-    calendar = fetch_calendar_games(days_back=7, days_forward=7)
+    sb = get_service_client()
+    comps = _pool_competitions(sb, pool_id)
+    calendar = fetch_calendar_games(comps, days_back=7, days_forward=7)
     active_date = _active_calendar_date(calendar)
     return render_template("pool/_calendar.html",
         calendar=calendar, active_date=active_date)
@@ -80,7 +91,9 @@ def calendar_partial(pool_id):
 @scores_bp.route("/pool/<pool_id>/scores/live.json")
 @login_required
 def live_scores_json(pool_id):
-    return jsonify({"live": fetch_live_games()})
+    sb = get_service_client()
+    comps = _pool_competitions(sb, pool_id)
+    return jsonify({"live": fetch_live_games(comps)})
 
 
 def _sync_completed_games():
