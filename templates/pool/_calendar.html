@@ -24,6 +24,8 @@
                         {% endif %}
                     </span>
                     <span class="game-league-badge {{ g.league }}">{{ g.league | upper }}</span>
+                    {% if g.stage %}<span class="cal-stage">{{ g.stage | replace('_', ' ') | upper }}</span>{% endif %}
+                    {% if g.is_draw %}<span class="cal-draw">Draw</span>{% endif %}
                 </div>
                 <div class="game-team away {% if g.state == 'post' and g.away.score > g.home.score %}winner{% endif %}"
                      style="border-left-color: #{{ g.away.color }};">
