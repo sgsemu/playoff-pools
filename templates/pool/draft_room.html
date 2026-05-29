@@ -39,7 +39,7 @@
     <section class="meta-bar" id="meta-bar">
         <div class="meta-bar-top">
             <div class="meta-bar-round">
-                {% if current_turn %}Round {{ current_turn[1] }} · Pick #{{ current_pick_index + 1 }}{% else %}Draft complete{% endif %}
+                {% if current_turn %}Round {{ current_turn[1] }} · Pick #{{ current_pick_index + 1 }}{% elif leftover_count and leftover_count > 0 %}Snake complete · {{ leftover_count }} team{{ '' if leftover_count == 1 else 's' }} to assign{% else %}Draft complete{% endif %}
             </div>
             {% if current_turn and meta.picks_until_turn is not none %}
                 {% if meta.picks_until_turn == 0 %}
@@ -67,6 +67,7 @@
             {% endif %}
             {% endfor %}
         </div>
+        {% endif %}
 
         {% if meta.last_pick %}
         <div class="meta-bar-last">
@@ -85,7 +86,6 @@
                 <strong>{{ meta.last_pick.team_name }}</strong>
             </span>
         </div>
-        {% endif %}
         {% endif %}
     </section>
 

@@ -480,20 +480,18 @@ def test_make_pick_rejects_team_outside_pool_competitions(mock_sb, authed_client
 from routes.draft import _get_snake_order
 
 
-def test_get_snake_order_truncates_to_total_picks_for_non_divisible():
-    # 5 members, 48 teams -> ceil(48/5) = 10 rounds, truncated to 48 slots.
-    snake = _get_snake_order(["a", "b", "c", "d", "e"], num_rounds=10, total_picks=48)
-    assert len(snake) == 48
-    assert snake[0] == ("a", 1)               # round 1 forward
-    assert snake[4] == ("e", 1)
-    assert snake[5] == ("e", 2)               # round 2 reversed
-    # Round 10 is reversed; the partial-round truncation keeps the first 3
-    # slots of that round, which are members e, d, c.
-    assert snake[45] == ("e", 10)
-    assert snake[46] == ("d", 10)
-    assert snake[47] == ("c", 10)
-
-
-def test_get_snake_order_no_truncation_returns_full_rounds():
+def test_get_snake_order_full_rounds_alternates_direction():
+    # Floor math: each member gets `num_rounds` picks. Any leftover teams are
+    # assigned manually by the commissioner — never via snake.
     snake = _get_snake_order(["a", "b"], num_rounds=3)
     assert snake == [("a", 1), ("b", 1), ("b", 2), ("a", 2), ("a", 3), ("b", 3)]
+
+
+def test_floor_rounds_leaves_leftover_teams_for_assign():
+    # 10 members, 48 teams -> 4 rounds of snake = 40 picks; 8 teams left over
+    # for the commissioner to assign via /draft/assign.
+    members = [f"m{i}" for i in range(10)]
+    snake = _get_snake_order(members, num_rounds=48 // 10)
+    assert len(snake) == 40
+    leftover_teams = 48 - len(snake)
+    assert leftover_teams == 8
