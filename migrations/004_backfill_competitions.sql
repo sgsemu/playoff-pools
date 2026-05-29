@@ -3,14 +3,19 @@
 -- existing picks/bids/results/pools to it. Idempotent via ON CONFLICT / guards.
 
 -- 1. NBA + NHL competition rows for the 2026 season
+-- JSON values are dollar-quoted ($j$...$j$) with explicit ::jsonb casts so the
+-- statement survives copy/paste into the Supabase SQL editor (inline
+-- single-quoted JSON tripped its parser).
 INSERT INTO competitions (league, season, name, espn_sport, espn_slug, event_filter, stages, scoring_defaults)
 VALUES
- ('nba', 2026, 'NBA Playoffs 2026', 'basketball', 'nba', '{"season_type":3}',
-  '[{"key":"r1","label":"Round 1"},{"key":"r2","label":"Round 2"},{"key":"cf","label":"Conference Finals"},{"key":"finals","label":"Finals"}]',
-  '{}'),
- ('nhl', 2026, 'NHL Playoffs 2026', 'hockey', 'nhl', '{"season_type":3}',
-  '[{"key":"r1","label":"Round 1"},{"key":"r2","label":"Round 2"},{"key":"cf","label":"Conference Finals"},{"key":"finals","label":"Stanley Cup Final"}]',
-  '{}')
+ ('nba', 2026, 'NBA Playoffs 2026', 'basketball', 'nba',
+  $j${"season_type":3}$j$::jsonb,
+  $j$[{"key":"r1","label":"Round 1"},{"key":"r2","label":"Round 2"},{"key":"cf","label":"Conference Finals"},{"key":"finals","label":"Finals"}]$j$::jsonb,
+  $j${}$j$::jsonb),
+ ('nhl', 2026, 'NHL Playoffs 2026', 'hockey', 'nhl',
+  $j${"season_type":3}$j$::jsonb,
+  $j$[{"key":"r1","label":"Round 1"},{"key":"r2","label":"Round 2"},{"key":"cf","label":"Conference Finals"},{"key":"finals","label":"Stanley Cup Final"}]$j$::jsonb,
+  $j${}$j$::jsonb)
 ON CONFLICT (league, season) DO NOTHING;
 
 -- 2. Copy legacy team tables into the generic teams table
