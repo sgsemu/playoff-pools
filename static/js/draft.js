@@ -208,19 +208,40 @@ function appendPick(pickOrder, teamName, logoUrl) {
     });
 })();
 
-// Supabase Realtime subscription for live updates
-if (typeof SUPABASE_URL !== "undefined" && SUPABASE_URL) {
+// Supabase Realtime subscription for live updates.
+// Verbose logging so a failing subscription is obvious in DevTools.
+(function () {
+    if (typeof SUPABASE_URL === "undefined" || !SUPABASE_URL) {
+        console.warn("[draft-realtime] SUPABASE_URL missing — realtime disabled.");
+        return;
+    }
+    if (typeof supabase === "undefined") {
+        console.error("[draft-realtime] supabase-js global not loaded — CDN script tag missing or blocked.");
+        return;
+    }
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+    const channelName = "draft-" + POOL_ID;
+    console.log("[draft-realtime] subscribing to channel", channelName, "for pool", POOL_ID);
 
-    sb.channel("draft-" + POOL_ID)
+    const channel = sb.channel(channelName)
         .on("postgres_changes", {
             event: "INSERT",
             schema: "public",
             table: "draft_picks",
-            filter: `pool_id=eq.${POOL_ID}`
+            filter: `pool_id=eq.${POOL_ID}`,
         }, (payload) => {
+            console.log("[draft-realtime] INSERT received, reloading:", payload);
             location.reload();
         })
-        .subscribe();
-}
+        .subscribe((status, err) => {
+            console.log("[draft-realtime] subscription status:", status, err || "");
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                console.error("[draft-realtime] subscription failed — check Supabase Realtime is enabled on `draft_picks` and that the anon key can read it.");
+            }
+        });
+
+    // Expose for manual inspection from the console.
+    window.__draftChannel = channel;
+    window.__draftSb = sb;
+})();

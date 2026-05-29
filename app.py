@@ -7,6 +7,10 @@ def create_app():
     import config
     app.secret_key = config.SECRET_KEY
     app.config["APP_URL"] = config.APP_URL
+    # Anon key + URL surfaced to templates so client-side Realtime can subscribe.
+    # SUPABASE_SERVICE_KEY stays server-only (never goes into a template).
+    app.config["SUPABASE_URL"] = config.SUPABASE_URL
+    app.config["SUPABASE_KEY"] = config.SUPABASE_KEY
     # Persist login across tabs and browser restarts (mobile Safari aggressively
     # clears session cookies). Login handlers set session.permanent = True.
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
