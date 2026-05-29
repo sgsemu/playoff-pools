@@ -118,7 +118,7 @@
         {% endif %}
     </div>
     <div class="draft-log" id="draft-log">
-        {% for pick in picks %}
+        {% for pick in picks|reverse %}
         <div class="pick-entry">
             <span class="pick-num">#{{ pick.pick_order }}</span>
             {% for m in members if m.id == pick.member_id %}
@@ -188,6 +188,16 @@
 </div>
 
 <a href="/pool/{{ pool.id }}" class="btn btn-secondary" style="margin-top:16px;">Back to Pool</a>
+
+<!-- Post-pick handoff modal: "Nice pick! Tell <next> they're up!" — reload on dismiss. -->
+<div class="pick-toast hidden" id="pick-toast" role="dialog" aria-modal="true">
+    <div class="pick-toast-card">
+        <div class="pick-toast-title">Nice pick!</div>
+        <div class="pick-toast-team" id="pick-toast-team"></div>
+        <div class="pick-toast-message" id="pick-toast-message"></div>
+        <button class="btn btn-primary" type="button" onclick="dismissPickToast()">Got it →</button>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

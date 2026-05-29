@@ -293,7 +293,26 @@ def make_pick(pool_id):
         # Unique index (pool_id, team_ref) — concurrent duplicate pick.
         return jsonify({"error": "Team already taken"}), 400
 
-    return jsonify({"success": True, "pick_order": pick_order})
+    # Build a "Nice pick! Tell <Name> they're up!" message for the picker, so
+    # the in-person draft flow has an explicit hand-off instead of a silent
+    # reload. The client modal uses next_message and reloads on dismiss.
+    if pick_order < len(snake):
+        next_member_id = snake[pick_order][0]
+        user_ids = [m["user_id"] for m in all_members]
+        users = sb.table("users").select("id,display_name").in_(
+            "id", user_ids
+        ).execute().data if user_ids else []
+        name_by_user = {u["id"]: u.get("display_name") or "?" for u in users}
+        next_member = next((m for m in all_members if m["id"] == next_member_id), None)
+        next_name = name_by_user.get(next_member["user_id"], "?") if next_member else "?"
+        if next_member_id == member["id"]:
+            next_message = "You're up again — back-to-back snake pick."
+        else:
+            next_message = f"Tell {next_name} they're up!"
+    else:
+        next_message = "Snake complete — commissioner assigns the leftovers."
+
+    return jsonify({"success": True, "pick_order": pick_order, "next_message": next_message})
 
 
 @draft_bp.route("/pool/<pool_id>/draft/start", methods=["POST"])

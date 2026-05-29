@@ -74,12 +74,24 @@ async function pickTeam(teamRef, teamName, logoUrl) {
     });
     const data = await resp.json();
     if (resp.ok) {
-        const btn = document.querySelector(`[data-team-ref="${teamRef}"]`);
-        if (btn) btn.remove();
-        appendPick(data.pick_order, teamName, logoUrl);
+        showPickToast(teamName, data.next_message || "Pick saved.");
     } else {
         alert(data.error || "Failed to make pick");
     }
+}
+
+function showPickToast(teamName, nextMessage) {
+    const toast = document.getElementById("pick-toast");
+    if (!toast) { location.reload(); return; }
+    document.getElementById("pick-toast-team").textContent = teamName;
+    document.getElementById("pick-toast-message").textContent = nextMessage;
+    toast.classList.remove("hidden");
+    // Safety auto-advance if the picker walks away from their phone.
+    setTimeout(function () { location.reload(); }, 20000);
+}
+
+function dismissPickToast() {
+    location.reload();
 }
 
 function appendPick(pickOrder, teamName, logoUrl) {
