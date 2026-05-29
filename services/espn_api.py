@@ -363,6 +363,30 @@ def fetch_competition_results(competition, dates=None):
     return out
 
 
+def fetch_group_winners(competition):
+    """Return the set of ext_ids that are ranked 1st in their group. Empty set
+    before the group stage finishes or if standings are unavailable."""
+    url = (f"https://site.api.espn.com/apis/v2/sports/"
+           f"{competition['espn_sport']}/{competition['espn_slug']}/standings")
+    try:
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return set()
+    winners = set()
+    for group in data.get("children", []):
+        for entry in group.get("standings", {}).get("entries", []):
+            stats = {s["name"]: s.get("value", s.get("displayValue")) for s in entry.get("stats", [])}
+            try:
+                rank = int(stats.get("rank"))
+            except (TypeError, ValueError):
+                continue
+            if rank == 1:
+                winners.add(int(entry["team"]["id"]))
+    return winners
+
+
 def fetch_nhl_standings(n=16):
     """Fetch current NHL season standings and return only clinched playoff teams."""
     url = "https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings"

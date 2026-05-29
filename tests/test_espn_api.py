@@ -108,3 +108,19 @@ def test_fetch_competition_results_detects_draw():
         g.return_value.raise_for_status = lambda: None
         games = fetch_competition_results(comp, dates="20260611")
     assert games[0]["is_draw"] is True
+
+
+def test_fetch_group_winners_returns_rank1_per_group():
+    payload = {"children": [
+        {"name": "Group A", "standings": {"entries": [
+            {"team": {"id": "203"}, "stats": [{"name": "rank", "value": 1}]},
+            {"team": {"id": "467"}, "stats": [{"name": "rank", "value": 2}]}]}},
+        {"name": "Group B", "standings": {"entries": [
+            {"team": {"id": "202"}, "stats": [{"name": "rank", "value": 1}]}]}},
+    ]}
+    from services.espn_api import fetch_group_winners
+    with patch("services.espn_api.requests.get") as g:
+        g.return_value = MagicMock(json=lambda: payload)
+        g.return_value.raise_for_status = lambda: None
+        winners = fetch_group_winners({"espn_sport": "soccer", "espn_slug": "fifa.world"})
+    assert winners == {203, 202}
