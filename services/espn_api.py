@@ -89,6 +89,8 @@ def fetch_calendar_games(competitions, days_back=7, days_forward=7):
                     "state": game.get("state", "pre"),
                     "is_draw": game.get("is_draw", False),
                     "status_detail": game.get("status_detail", ""),
+                    "kickoff_short": game.get("kickoff_short", ""),
+                    "kickoff_full": game.get("kickoff_full", ""),
                     "home": {
                         "id": game["home_team_id"],
                         "abbr": game.get("home_team_abbr", "?"),
@@ -317,6 +319,20 @@ def resolve_stage(league, season_slug):
     return STAGE_SLUGS.get(league, {}).get(season_slug)
 
 
+def _format_kickoff(iso_date):
+    """Return ('3:00 PM ET', 'Thu, Jun 11 · 3:00 PM ET') for an ISO timestamp,
+    or ('', '') if parsing fails. Times are rendered in Eastern."""
+    if not iso_date:
+        return "", ""
+    try:
+        dt = datetime.fromisoformat(iso_date.replace("Z", "+00:00")).astimezone(_ET)
+    except Exception:
+        return "", ""
+    short = dt.strftime("%-I:%M %p ET")
+    full = dt.strftime("%a, %b %-d · %-I:%M %p ET")
+    return short, full
+
+
 def fetch_competition_results(competition, dates=None):
     """Fetch results for one competition. Returns a list of game dicts with
     competition-agnostic fields the sync layer writes. `dates` is an optional
@@ -347,6 +363,7 @@ def fetch_competition_results(competition, dates=None):
         # (knockouts always resolve a winner via ET/penalties).
         no_winner = not home.get("winner") and not away.get("winner")
         is_draw = completed and no_winner and home_score == away_score
+        kickoff_short, kickoff_full = _format_kickoff(ev.get("date"))
         out.append({
             "espn_game_id": ev["id"],
             "home_team_id": int(home["team"]["id"]),
@@ -360,6 +377,8 @@ def fetch_competition_results(competition, dates=None):
             "is_complete": completed,
             "state": status.get("state", "pre"),
             "status_detail": status.get("shortDetail", ""),
+            "kickoff_short": kickoff_short,
+            "kickoff_full": kickoff_full,
             "stage": resolve_stage(competition["league"], ev.get("season", {}).get("slug", "")),
             "is_draw": is_draw,
         })

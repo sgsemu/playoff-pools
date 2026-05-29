@@ -18,7 +18,7 @@
             <span class="status-pill {{ game.state }}">
                 {% if game.state == 'post' %}Final · {{ game.away.score }}–{{ game.home.score }}
                 {% elif game.state == 'in' %}● Live · {{ game.status_detail }} · {{ game.away.score }}–{{ game.home.score }}
-                {% else %}{{ game.status_detail or "Upcoming" }}
+                {% else %}{{ game.kickoff_full or game.status_detail or "Upcoming" }}
                 {% endif %}
             </span>
         </div>

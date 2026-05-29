@@ -31,7 +31,7 @@
                     <span class="status-pill {{ g.state }}">
                         {% if g.state == 'post' %}Final
                         {% elif g.state == 'in' %}● Live · {{ g.status_detail }}
-                        {% else %}{{ g.status_detail }}
+                        {% else %}{{ g.kickoff_short or g.status_detail or "Scheduled" }}
                         {% endif %}
                     </span>
                     <span class="game-league-badge {{ g.league }}">{{ g.league | upper }}</span>
