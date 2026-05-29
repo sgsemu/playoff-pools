@@ -82,3 +82,28 @@ def calculate_salary_cap_scores(config, member_players, player_stats):
         scores[member_id] = total
 
     return scores
+
+
+def calculate_stage_weighted_scores(stages, team_results, member_teams, group_winners):
+    """Score teams by per-match result weighted by stage.
+
+    stages: list of {key, win_points, [draw_points], [group_winner_bonus]}.
+    team_results: {team_ext_id: [(stage_key, "win"|"draw"|"loss"), ...]}.
+    member_teams: {member_id: [team_ext_id, ...]}.
+    group_winners: set of team_ext_ids that finished 1st in their group.
+    """
+    by_key = {s["key"]: s for s in stages}
+    scores = {}
+    for member_id, teams in member_teams.items():
+        total = 0
+        for team in teams:
+            for stage_key, outcome in team_results.get(team, []):
+                s = by_key.get(stage_key, {})
+                if outcome == "win":
+                    total += s.get("win_points", 0)
+                elif outcome == "draw":
+                    total += s.get("draw_points", 0)
+            if team in group_winners:
+                total += by_key.get("group", {}).get("group_winner_bonus", 0)
+        scores[member_id] = total
+    return scores

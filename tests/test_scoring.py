@@ -1,4 +1,4 @@
-from services.scoring import calculate_team_scores, calculate_salary_cap_scores
+from services.scoring import calculate_team_scores, calculate_salary_cap_scores, calculate_stage_weighted_scores
 
 
 def test_per_win_scoring():
@@ -60,3 +60,27 @@ def test_salary_cap_scoring_with_multipliers():
     scores = calculate_salary_cap_scores(config, member_players, player_stats)
     # 100*1.0 + 50*1.2 + 40*1.5 = 100 + 60 + 60 = 220
     assert scores["member-a"] == 220.0
+
+
+_WC_STAGES = [
+    {"key": "group", "win_points": 3, "draw_points": 1, "group_winner_bonus": 2},
+    {"key": "r32", "win_points": 3}, {"key": "r16", "win_points": 3},
+    {"key": "qf", "win_points": 3}, {"key": "sf", "win_points": 4},
+    {"key": "final", "win_points": 5}, {"key": "third_place", "win_points": 3},
+]
+
+
+def test_stage_weighted_group_and_knockout_and_bonus():
+    # member m1 holds team 203. Results: group win, group draw, R32 win, SF win.
+    # Team 203 also won its group (bonus +2).
+    # 3 + 1 + 3 + 4 + 2 = 13
+    team_results = {203: [("group", "win"), ("group", "draw"), ("r32", "win"), ("sf", "win")]}
+    member_teams = {"m1": [203]}
+    scores = calculate_stage_weighted_scores(_WC_STAGES, team_results, member_teams, group_winners={203})
+    assert scores["m1"] == 13
+
+
+def test_stage_weighted_no_bonus_when_not_group_winner():
+    team_results = {203: [("group", "win")]}
+    scores = calculate_stage_weighted_scores(_WC_STAGES, team_results, {"m1": [203]}, group_winners=set())
+    assert scores["m1"] == 3
