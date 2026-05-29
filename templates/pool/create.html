@@ -17,16 +17,28 @@
                         <input type="radio" name="type" value="draft" checked>
                         <div class="type-card">
                             <strong>Team Draft</strong>
-                            <p>Snake draft NBA + NHL playoff teams</p>
+                            <p>Snake draft the teams in your chosen competition(s)</p>
                         </div>
                     </label>
                     <label class="type-option">
                         <input type="radio" name="type" value="auction">
                         <div class="type-card">
                             <strong>Team Auction</strong>
-                            <p>Bid on NBA + NHL playoff teams</p>
+                            <p>Bid on the teams in your chosen competition(s)</p>
                         </div>
                     </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Competition(s) to draft</label>
+                <div class="type-options">
+                    {% for c in competitions %}
+                    <label class="type-option">
+                        <input type="checkbox" name="competition_ids" value="{{ c.id }}"
+                               {{ 'checked' if c.league == 'world_cup' else '' }}>
+                        <div class="type-card"><strong>{{ c.name }}</strong></div>
+                    </label>
+                    {% endfor %}
                 </div>
             </div>
             <button type="button" class="btn btn-primary" onclick="nextStep(2)">Next</button>

@@ -71,7 +71,11 @@ def dashboard():
 @login_required
 def create_pool():
     if request.method == "GET":
-        return render_template("pool/create.html")
+        sb = get_service_client()
+        comps = sb.table("competitions").select("id,name,league").eq(
+            "status", "active"
+        ).order("name").execute().data
+        return render_template("pool/create.html", competitions=comps)
 
     sb = get_service_client()
     invite_code = secrets.token_urlsafe(8)
@@ -83,7 +87,7 @@ def create_pool():
     pool = sb.table("pools").insert({
         "creator_id": session["user_id"],
         "name": request.form["name"],
-        "league": "nba",
+        "league": "multi",
         "type": pool_type,
         "invite_code": invite_code,
         "buy_in": request.form.get("buy_in", ""),
@@ -101,6 +105,12 @@ def create_pool():
         "user_id": session["user_id"],
         "role": "creator"
     }).execute()
+
+    competition_ids = [c for c in request.form.getlist("competition_ids") if c]
+    if competition_ids:
+        sb.table("pool_competitions").insert(
+            [{"pool_id": pool["id"], "competition_id": cid} for cid in competition_ids]
+        ).execute()
 
     flash(f"Pool created! Share this invite link: {__import__('config').APP_URL}/join/{invite_code}", "success")
     return redirect(f"/pool/{pool['id']}")

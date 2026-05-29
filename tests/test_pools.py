@@ -65,6 +65,33 @@ def test_create_pool(mock_sb, authed_client):
 
 
 @patch("routes.pools.get_service_client")
+def test_create_pool_writes_pool_competitions(mock_sb, authed_client):
+    captured = {"pool_competitions": []}
+
+    def _side_effect(*args, **_kwargs):
+        name = args[0] if args else ""
+        t = MagicMock()
+        if name == "pools":
+            t.insert.return_value.execute.return_value.data = [{"id": "pool-1"}]
+        elif name == "pool_members":
+            t.insert.return_value.execute.return_value.data = [{}]
+        elif name == "pool_competitions":
+            def _ins(rows):
+                captured["pool_competitions"] = rows
+                r = MagicMock(); r.execute.return_value.data = rows; return r
+            t.insert.side_effect = _ins
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
+    resp = authed_client.post("/pool/create", data={
+        "name": "WC Pool", "type": "draft", "scoring_type": "combo",
+        "competition_ids": "c-wc",
+    })
+    assert resp.status_code in (302, 303)
+    assert captured["pool_competitions"] == [{"pool_id": "pool-1", "competition_id": "c-wc"}]
+
+
+@patch("routes.pools.get_service_client")
 def test_join_pool_via_invite(mock_sb, authed_client):
     mock_table = MagicMock()
     mock_sb.return_value.table.return_value = mock_table
