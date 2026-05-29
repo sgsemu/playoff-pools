@@ -299,6 +299,70 @@ def fetch_nhl_scoreboard(date=None):
     return games
 
 
+# ESPN season.slug -> our competition stage key. Group-stage confirmed live;
+# knockout slugs are FIFA's standard bracket names — verify once the bracket
+# is set (Task 1 probe only sees group-stage pre-tournament).
+STAGE_SLUGS = {
+    "world_cup": {
+        "group-stage": "group",
+        "round-of-32": "r32",
+        "round-of-16": "r16",
+        "quarterfinals": "qf",
+        "semifinals": "sf",
+        "third-place": "third_place",
+        "final": "final",
+    },
+}
+
+
+def resolve_stage(league, season_slug):
+    """Map an ESPN season.slug to our stage key, or None if unrecognized."""
+    return STAGE_SLUGS.get(league, {}).get(season_slug)
+
+
+def fetch_competition_results(competition, dates=None):
+    """Fetch results for one competition. Returns a list of game dicts with
+    competition-agnostic fields the sync layer writes. `dates` is an optional
+    YYYYMMDD string; without it, ESPN returns the current scoreboard."""
+    base = (f"https://site.api.espn.com/apis/site/v2/sports/"
+            f"{competition['espn_sport']}/{competition['espn_slug']}")
+    params = {}
+    if dates:
+        params["dates"] = dates
+    resp = requests.get(f"{base}/scoreboard", params=params,
+                        headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    season_type_filter = (competition.get("event_filter") or {}).get("season_type")
+    out = []
+    for ev in data.get("events", []):
+        if season_type_filter is not None and ev.get("season", {}).get("type", 0) != season_type_filter:
+            continue
+        comp = ev["competitions"][0]
+        status = comp["status"]["type"]
+        home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
+        away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
+        home_score = int(home["score"]) if str(home.get("score", "")).isdigit() else 0
+        away_score = int(away["score"]) if str(away.get("score", "")).isdigit() else 0
+        completed = bool(status.get("completed"))
+        # A completed match with no declared winner and equal score is a draw
+        # (knockouts always resolve a winner via ET/penalties).
+        no_winner = not home.get("winner") and not away.get("winner")
+        is_draw = completed and no_winner and home_score == away_score
+        out.append({
+            "espn_game_id": ev["id"],
+            "home_team_id": int(home["team"]["id"]),
+            "away_team_id": int(away["team"]["id"]),
+            "home_score": home_score,
+            "away_score": away_score,
+            "is_complete": completed,
+            "stage": resolve_stage(competition["league"], ev.get("season", {}).get("slug", "")),
+            "is_draw": is_draw,
+        })
+    return out
+
+
 def fetch_nhl_standings(n=16):
     """Fetch current NHL season standings and return only clinched playoff teams."""
     url = "https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings"
