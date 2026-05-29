@@ -207,30 +207,28 @@ def build_standings_view(pool_id):
     all_games = sb.table("game_results").select("*").execute().data
     team_wins = {}
     for g in all_games:
-        league = g.get("league", "nba")
-        winner_id = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
-        key = (league, winner_id)
-        team_wins[key] = team_wins.get(key, 0) + 1
-
-    nba_teams = {t["id"]: t for t in sb.table("nba_teams").select("*").execute().data}
-    nhl_teams = {t["id"]: t for t in sb.table("nhl_teams").select("*").execute().data}
+        cid = g.get("competition_id")
+        winner_ext = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
+        if g["home_score"] != g["away_score"]:
+            team_wins[(cid, winner_ext)] = team_wins.get((cid, winner_ext), 0) + 1
 
     picks = sb.table("draft_picks").select("*").eq(
         "pool_id", pool_id
     ).order("pick_order").execute().data
+    from services.competitions import teams_by_ref
+    team_lookup = teams_by_ref(sb, [p["team_ref"] for p in picks if p.get("team_ref")])
     member_teams = {}
     for p in picks:
-        tid = p.get("team_id") or p.get("nba_team_id")
-        league = p.get("league", "nba")
-        t = nba_teams.get(tid) if league == "nba" else nhl_teams.get(tid)
-        if t:
-            member_teams.setdefault(p["member_id"], []).append({
-                "league": league,
-                "abbreviation": t["abbreviation"],
-                "name": t["name"],
-                "wins": team_wins.get((league, tid), 0),
-                "color": team_color(league, tid),
-            })
+        t = team_lookup.get(p.get("team_ref"))
+        if not t:
+            continue
+        member_teams.setdefault(p["member_id"], []).append({
+            "league": t.get("league", ""),
+            "abbreviation": t["abbreviation"],
+            "name": t["name"],
+            "wins": team_wins.get((t["competition_id"], t["ext_id"]), 0),
+            "color": team_color(t.get("league", ""), t["ext_id"]),
+        })
 
     rows = [{
         "member_id": m["id"],
