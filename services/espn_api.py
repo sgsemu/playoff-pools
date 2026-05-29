@@ -79,9 +79,6 @@ def fetch_calendar_games(competitions, days_back=7, days_forward=7):
             except Exception:
                 continue
             for game in games:
-                # We need state + status_detail for the calendar UI; refetch the
-                # raw event would double the call count, so reuse what
-                # fetch_competition_results already gives us.
                 home_color = team_color(comp.get("league", ""), game["home_team_id"])
                 away_color = team_color(comp.get("league", ""), game["away_team_id"])
                 by_date.setdefault(date_key, {"label": date_label, "games": []})
@@ -89,13 +86,23 @@ def fetch_calendar_games(competitions, days_back=7, days_forward=7):
                     "espn_game_id": game["espn_game_id"],
                     "league": comp.get("league", ""),
                     "stage": game.get("stage"),
-                    "state": "post" if game["is_complete"] else "pre",
+                    "state": game.get("state", "pre"),
                     "is_draw": game.get("is_draw", False),
-                    "status_detail": "FT" if game["is_complete"] else "",
-                    "home": {"id": game["home_team_id"], "abbr": str(game["home_team_id"]),
-                             "name": "", "score": game["home_score"], "color": home_color},
-                    "away": {"id": game["away_team_id"], "abbr": str(game["away_team_id"]),
-                             "name": "", "score": game["away_score"], "color": away_color},
+                    "status_detail": game.get("status_detail", ""),
+                    "home": {
+                        "id": game["home_team_id"],
+                        "abbr": game.get("home_team_abbr", "?"),
+                        "name": game.get("home_team_name", "?"),
+                        "score": game["home_score"],
+                        "color": home_color,
+                    },
+                    "away": {
+                        "id": game["away_team_id"],
+                        "abbr": game.get("away_team_abbr", "?"),
+                        "name": game.get("away_team_name", "?"),
+                        "score": game["away_score"],
+                        "color": away_color,
+                    },
                 })
     return by_date
 
@@ -342,9 +349,15 @@ def fetch_competition_results(competition, dates=None):
             "espn_game_id": ev["id"],
             "home_team_id": int(home["team"]["id"]),
             "away_team_id": int(away["team"]["id"]),
+            "home_team_abbr": home["team"].get("abbreviation", "?"),
+            "home_team_name": home["team"].get("displayName", "?"),
+            "away_team_abbr": away["team"].get("abbreviation", "?"),
+            "away_team_name": away["team"].get("displayName", "?"),
             "home_score": home_score,
             "away_score": away_score,
             "is_complete": completed,
+            "state": status.get("state", "pre"),
+            "status_detail": status.get("shortDetail", ""),
             "stage": resolve_stage(competition["league"], ev.get("season", {}).get("slug", "")),
             "is_draw": is_draw,
         })
