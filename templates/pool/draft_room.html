@@ -69,7 +69,18 @@
         </div>
 
         {% if meta.last_pick %}
-        <div class="meta-bar-last">Last: <strong>{{ meta.last_pick.team_name }}</strong> · {{ meta.last_pick.display_name }}</div>
+        <div class="meta-bar-last">
+            <span class="meta-bar-last-label">Last pick</span>
+            <span class="meta-bar-last-sep">·</span>
+            <span class="meta-bar-last-num">#{{ meta.last_pick.pick_order }}</span>
+            <span class="meta-bar-last-sep">·</span>
+            <span class="meta-bar-last-manager">{{ meta.last_pick.display_name }}</span>
+            <span class="meta-bar-last-sep">·</span>
+            <span class="meta-bar-last-team">
+                <span class="meta-team-logo" aria-hidden="true"></span>
+                <strong>{{ meta.last_pick.team_name }}</strong>
+            </span>
+        </div>
         {% endif %}
         {% endif %}
     </section>

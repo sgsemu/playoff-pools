@@ -326,10 +326,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 }
 .meta-circle {
     flex: 0 0 auto;
-    width: 28px; height: 28px;
+    width: 32px; height: 32px;
     border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
-    color: #fff; font-weight: 700; font-size: 0.75rem;
+    color: #fff; font-weight: 700; font-size: 0.7rem;
+    letter-spacing: 0.5px;
     user-select: none;
 }
 .meta-circle-current {
@@ -338,8 +339,30 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .meta-bar-round-flip {
     color: #888; font-size: 0.7rem; padding: 0 4px; flex: 0 0 auto;
 }
-.meta-bar-last { color: #888; font-size: 0.8rem; }
-.meta-bar-last strong { color: #e0e0e0; font-weight: 600; }
+.meta-bar-last {
+    color: #888; font-size: 0.8rem;
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
+}
+.meta-bar-last-label {
+    font-weight: 700; color: #b9aeff;
+    text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.5px;
+}
+.meta-bar-last-sep { color: #555; }
+.meta-bar-last-num { color: #888; }
+.meta-bar-last-manager { color: #e0e0e0; }
+.meta-bar-last-team {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #e0e0e0; font-weight: 600;
+}
+.meta-team-logo {
+    display: inline-block;
+    width: 20px; height: 14px;
+    border-radius: 2px;
+    background: #2a2a3e;
+    border: 1px solid #3a3a4e;
+    flex-shrink: 0;
+}
 
 /* Team card disabled when it's not the viewer's turn */
 .team-card[disabled] {

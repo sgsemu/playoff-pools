@@ -62,6 +62,17 @@ def _name_color(name):
     return _META_PALETTE[h % len(_META_PALETTE)]
 
 
+def _initials(name):
+    """1-2 letter initials from a display name: first + last word's first letter,
+    or the first two letters if only one word."""
+    if not name or name == "?":
+        return "?"
+    parts = name.strip().split()
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[-1][0]).upper()
+    return parts[0][:2].upper()
+
+
 def _build_meta_bar(members, picks, snake, current_pick_index, viewer_user_id, upcoming_count=8):
     """Compute the draft-room meta-bar context: the next N pickers (with initial
     + color), the viewing user's distance to their next turn, the current
@@ -83,7 +94,7 @@ def _build_meta_bar(members, picks, snake, current_pick_index, viewer_user_id, u
             "round": rnd,
             "member_id": mid,
             "display_name": name,
-            "initial": name[0].upper(),
+            "initial": _initials(name),
             "color": _name_color(name),
             "is_current": i == current_pick_index,
         })
@@ -104,7 +115,7 @@ def _build_meta_bar(members, picks, snake, current_pick_index, viewer_user_id, u
     if current_pick_index < len(snake):
         cur_id = snake[current_pick_index][0]
         current_display_name = _name(cur_id)
-        current_initial = current_display_name[0].upper()
+        current_initial = _initials(current_display_name)
         current_color = _name_color(current_display_name)
 
     last_pick = None
