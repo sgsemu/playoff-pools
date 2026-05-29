@@ -244,6 +244,13 @@ def join_pool(invite_code):
     ).eq("user_id", session["user_id"]).execute().data
 
     if not existing:
+        if pool.get("draft_status") != "pending":
+            flash(
+                f"{pool['name']} has already started its draft — "
+                "ask the commissioner to add you.",
+                "error",
+            )
+            return redirect("/dashboard")
         sb.table("pool_members").insert({
             "pool_id": pool["id"],
             "user_id": session["user_id"],

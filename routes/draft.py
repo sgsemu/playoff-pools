@@ -43,14 +43,19 @@ def _build_team_groups(sb, pool_id, taken_refs):
     return sorted(groups.values(), key=lambda g: g["competition"].get("name", ""))
 
 
-def _get_snake_order(member_ids, num_rounds):
-    """Generate snake draft order: 1-2-3...3-2-1...1-2-3..."""
+def _get_snake_order(member_ids, num_rounds, total_picks=None):
+    """Generate snake draft order: 1-2-3...3-2-1...1-2-3...
+
+    Optionally truncated to `total_picks` so a non-divisible team-count yields
+    a partial last round (every team is draftable, no extra empty slots)."""
     order = []
     for rnd in range(1, num_rounds + 1):
         if rnd % 2 == 1:
             order.extend([(m, rnd) for m in member_ids])
         else:
             order.extend([(m, rnd) for m in reversed(member_ids)])
+    if total_picks is not None:
+        order = order[:total_picks]
     return order
 
 
@@ -200,11 +205,14 @@ def draft_room(pool_id):
 
     team_groups = _build_team_groups(sb, pool_id, taken_refs)
 
-    # Whose turn (snake order over the ordered member list).
+    # Whose turn (snake order over the ordered member list). Use ceiling so
+    # every team is draftable when total_teams isn't a multiple of members,
+    # then truncate to total_teams so the last round is partial rather than
+    # leaving phantom empty slots after every team is taken.
     member_ids = [m["id"] for m in members]
     total_teams = sum(len(g["teams"]) for g in team_groups)
-    num_rounds = max(1, total_teams // len(members)) if members else 1
-    snake = _get_snake_order(member_ids, num_rounds)
+    num_rounds = max(1, -(-total_teams // len(members))) if members else 1
+    snake = _get_snake_order(member_ids, num_rounds, total_picks=total_teams)
     current_pick_index = len(picks)
     current_turn = snake[current_pick_index] if current_pick_index < len(snake) else None
 
@@ -262,8 +270,8 @@ def make_pick(pool_id):
         return jsonify({"error": "No members in pool"}), 409
 
     all_team_count = len(get_draftable_teams(sb, pool_id))
-    num_rounds = max(1, all_team_count // len(member_ids))
-    snake = _get_snake_order(member_ids, num_rounds)
+    num_rounds = max(1, -(-all_team_count // len(member_ids)))
+    snake = _get_snake_order(member_ids, num_rounds, total_picks=all_team_count)
     pick_order = len(picks) + 1
     if pick_order > len(snake):
         return jsonify({"error": "Draft is complete"}), 409

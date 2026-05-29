@@ -229,3 +229,25 @@ def test_add_member_rejects_user_outside_circle(mock_sb, mock_addable, authed_cl
     mock_sb.return_value.table.side_effect = _pool_only("test-uuid", "pending")
     resp = authed_client.post("/pool/pool-1/members/add", data={"user_id": "u9"})
     assert resp.status_code == 403
+
+
+@patch("routes.pools.get_service_client")
+def test_join_pool_rejects_when_draft_started(mock_sb, authed_client):
+    def table(name):
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "pool-1", "name": "Active Pool", "draft_status": "active",
+                 "invite_code": "ABC123"}
+            ]
+        elif name == "pool_members":
+            # user is not yet a member
+            t.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+            # if insert is called, the test fails loudly
+            t.insert.side_effect = AssertionError("must not insert into a started pool")
+        return t
+
+    mock_sb.return_value.table.side_effect = table
+    resp = authed_client.get("/join/ABC123", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "/dashboard" in resp.headers.get("Location", "")

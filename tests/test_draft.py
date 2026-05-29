@@ -475,3 +475,25 @@ def test_make_pick_rejects_team_outside_pool_competitions(mock_sb, authed_client
     mock_sb.return_value.table.side_effect = _side_effect
     resp = authed_client.post("/pool/pool-1/draft/pick", json={"team_ref": "t9"})
     assert resp.status_code == 400
+
+
+from routes.draft import _get_snake_order
+
+
+def test_get_snake_order_truncates_to_total_picks_for_non_divisible():
+    # 5 members, 48 teams -> ceil(48/5) = 10 rounds, truncated to 48 slots.
+    snake = _get_snake_order(["a", "b", "c", "d", "e"], num_rounds=10, total_picks=48)
+    assert len(snake) == 48
+    assert snake[0] == ("a", 1)               # round 1 forward
+    assert snake[4] == ("e", 1)
+    assert snake[5] == ("e", 2)               # round 2 reversed
+    # Round 10 is reversed; the partial-round truncation keeps the first 3
+    # slots of that round, which are members e, d, c.
+    assert snake[45] == ("e", 10)
+    assert snake[46] == ("d", 10)
+    assert snake[47] == ("c", 10)
+
+
+def test_get_snake_order_no_truncation_returns_full_rounds():
+    snake = _get_snake_order(["a", "b"], num_rounds=3)
+    assert snake == [("a", 1), ("b", 1), ("b", 2), ("a", 2), ("a", 3), ("b", 3)]
