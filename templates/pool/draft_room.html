@@ -111,7 +111,7 @@
                     <button type="button" class="queue-btn" onclick="moveQueueUp('{{ row.team_ref }}')" aria-label="Move up">↑</button>
                     <button type="button" class="queue-btn" onclick="moveQueueDown('{{ row.team_ref }}')" aria-label="Move down">↓</button>
                     {% if pool.draft_status == 'active' and meta and meta.is_my_turn and not row.taken %}
-                    <button type="button" class="queue-btn queue-btn-pick" onclick="pickTeam('{{ row.team_ref }}', '{{ row.team_name | e }}', '{{ row.logo_url or '' }}')">Pick</button>
+                    <button type="button" class="queue-btn queue-btn-pick" onclick='pickTeam({{ row.team_ref | tojson }}, {{ row.team_name | tojson }}, {{ (row.logo_url or "") | tojson }})'>Pick</button>
                     {% endif %}
                     <button type="button" class="queue-btn queue-btn-remove" onclick="toggleQueue('{{ row.team_ref }}')" aria-label="Remove">×</button>
                 </span>
@@ -141,7 +141,7 @@
             <div class="team-card-wrap{% if team.id in viewer_queue_refs %} team-card-queued{% endif %}" data-team-ref="{{ team.id }}">
                 <button class="team-card" data-team-ref="{{ team.id }}"
                         {% if not can_pick %}disabled aria-label="Wait for your turn"{% endif %}
-                        onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
+                        onclick='pickTeam({{ team.id | tojson }}, {{ team.name | tojson }}, {{ (team.logo_url or "") | tojson }})'>
                     {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
                     <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else '' }}</div>
                     <div class="team-name">{{ team.abbreviation }}</div>
@@ -161,7 +161,7 @@
             <div class="team-card-wrap{% if team.id in viewer_queue_refs %} team-card-queued{% endif %}" data-team-ref="{{ team.id }}">
                 <button class="team-card" data-team-ref="{{ team.id }}"
                         {% if not can_pick %}disabled aria-label="Wait for your turn"{% endif %}
-                        onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
+                        onclick='pickTeam({{ team.id | tojson }}, {{ team.name | tojson }}, {{ (team.logo_url or "") | tojson }})'>
                     {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
                     <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else (team.grouping or '') }}</div>
                     <div class="team-name">{{ team.abbreviation }}</div>
