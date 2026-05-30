@@ -579,3 +579,85 @@ a.best-line-book:hover { background: #353550; }
     text-align: center; padding: 12px; border-top: 1px solid #2a2a3e;
     margin-top: 16px;
 }
+
+/* === Pre-draft queue === */
+.queue-panel {
+    background: #1a1a2e; border: 1px solid #2a2a3e;
+    border-radius: 10px; padding: 16px; margin: 16px 0;
+}
+.queue-hint {
+    color: #8a8aa0; font-size: 0.85rem; margin: 0 0 12px;
+}
+.queue-list {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.queue-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; background: #0f0f1e; border: 1px solid #2a2a3e;
+    border-radius: 8px; cursor: grab;
+}
+.queue-item.dragging { opacity: 0.4; }
+.queue-item-taken {
+    opacity: 0.45; text-decoration: line-through;
+    cursor: not-allowed;
+}
+.queue-rank {
+    color: #7c6ef0; font-weight: 700; min-width: 24px; text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.queue-handle {
+    color: #444; cursor: grab; user-select: none; padding: 0 2px;
+}
+.queue-item-taken .queue-handle { cursor: not-allowed; }
+.queue-logo {
+    width: 24px; height: 24px; object-fit: contain;
+}
+.queue-team-name {
+    flex: 1; color: #e0e0e0; font-weight: 600;
+}
+.queue-group {
+    color: #666; font-weight: 400; font-size: 0.85rem;
+}
+.queue-taken-pill {
+    background: #2a1a1a; color: #c66; font-size: 0.7rem;
+    padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+    letter-spacing: 0.05em; text-decoration: none;
+}
+.queue-actions { display: flex; gap: 4px; }
+.queue-btn {
+    background: #1a1a2e; border: 1px solid #2a2a3e; color: #aaa;
+    width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+    font-size: 0.9rem; padding: 0; display: inline-flex;
+    align-items: center; justify-content: center;
+}
+.queue-btn:hover { background: #2a2a3e; color: #e0e0e0; }
+.queue-btn-pick {
+    width: auto; padding: 0 10px; color: #fff;
+    background: #7c6ef0; border-color: #7c6ef0; font-weight: 600;
+}
+.queue-btn-pick:hover { background: #6a5cd8; border-color: #6a5cd8; }
+.queue-btn-remove:hover { color: #f66; border-color: #f66; }
+.queue-empty {
+    color: #555; font-style: italic; padding: 12px;
+    text-align: center; background: #0f0f1e; border-radius: 8px;
+    border: 1px dashed #2a2a3e;
+}
+
+/* === Team card ★ queue button === */
+.team-card-wrap { position: relative; }
+.team-card-wrap .team-card { width: 100%; }
+.team-card-star {
+    position: absolute; top: 4px; right: 4px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5); border: 1px solid #2a2a3e;
+    color: #555; cursor: pointer; font-size: 0.95rem; line-height: 1;
+    padding: 0; display: inline-flex; align-items: center; justify-content: center;
+    z-index: 2; transition: color 0.15s, background 0.15s;
+}
+.team-card-star:hover {
+    background: rgba(124, 110, 240, 0.2); color: #aaa;
+}
+.team-card-queued .team-card-star {
+    background: #7c6ef0; color: #fff; border-color: #7c6ef0;
+}

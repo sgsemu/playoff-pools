@@ -208,6 +208,114 @@ function appendPick(pickOrder, teamName, logoUrl) {
     });
 })();
 
+// --- Pre-draft queue ---
+// Add/remove via ★ on team cards or × in the queue panel. Reorder via drag
+// or ↑↓ buttons. Toggle reloads so the queue panel re-renders cleanly;
+// reorder just shuffles DOM + persists (no reload).
+(function () {
+    if (typeof VIEWER_MEMBER_ID === "undefined" || !VIEWER_MEMBER_ID) return;
+    let currentQueue = Array.isArray(INITIAL_QUEUE) ? INITIAL_QUEUE.slice() : [];
+
+    async function persistQueue() {
+        try {
+            const resp = await fetch(`/pool/${POOL_ID}/queue`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ team_refs: currentQueue }),
+            });
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                alert(data.error || "Failed to update queue");
+                return false;
+            }
+            return true;
+        } catch (e) {
+            alert("Network error updating queue");
+            return false;
+        }
+    }
+
+    window.toggleQueue = async function (teamRef) {
+        const idx = currentQueue.indexOf(teamRef);
+        if (idx === -1) {
+            currentQueue.push(teamRef);
+        } else {
+            currentQueue.splice(idx, 1);
+        }
+        const wrap = document.querySelector(`.team-card-wrap[data-team-ref="${teamRef}"]`);
+        if (wrap) wrap.classList.toggle("team-card-queued", idx === -1);
+        const ok = await persistQueue();
+        if (ok) location.reload();
+    };
+
+    function renumberQueue() {
+        const list = document.getElementById("queue-list");
+        if (!list) return;
+        list.querySelectorAll(".queue-item").forEach((el, i) => {
+            const rank = el.querySelector(".queue-rank");
+            if (rank) rank.textContent = String(i + 1);
+        });
+    }
+
+    function reorderQueueDom() {
+        const list = document.getElementById("queue-list");
+        if (!list) return;
+        const byRef = {};
+        list.querySelectorAll(".queue-item").forEach((el) => {
+            byRef[el.dataset.teamRef] = el;
+        });
+        currentQueue.forEach((ref) => {
+            const el = byRef[ref];
+            if (el) list.appendChild(el);
+        });
+        renumberQueue();
+    }
+
+    function moveTo(teamRef, delta) {
+        const idx = currentQueue.indexOf(teamRef);
+        if (idx === -1) return;
+        const newIdx = idx + delta;
+        if (newIdx < 0 || newIdx >= currentQueue.length) return;
+        const [item] = currentQueue.splice(idx, 1);
+        currentQueue.splice(newIdx, 0, item);
+        reorderQueueDom();
+        persistQueue();
+    }
+
+    window.moveQueueUp = (teamRef) => moveTo(teamRef, -1);
+    window.moveQueueDown = (teamRef) => moveTo(teamRef, +1);
+
+    const list = document.getElementById("queue-list");
+    if (list) {
+        let dragged = null;
+        list.addEventListener("dragstart", (e) => {
+            const item = e.target.closest(".queue-item");
+            if (!item || item.classList.contains("queue-item-taken")) return;
+            dragged = item;
+            item.classList.add("dragging");
+            e.dataTransfer.effectAllowed = "move";
+        });
+        list.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            if (!dragged) return;
+            const target = e.target.closest(".queue-item");
+            if (!target || target === dragged) return;
+            const rect = target.getBoundingClientRect();
+            const after = e.clientY > rect.top + rect.height / 2;
+            target.parentNode.insertBefore(dragged, after ? target.nextSibling : target);
+        });
+        list.addEventListener("dragend", () => {
+            if (!dragged) return;
+            dragged.classList.remove("dragging");
+            dragged = null;
+            currentQueue = Array.from(list.querySelectorAll(".queue-item"))
+                .map((el) => el.dataset.teamRef);
+            renumberQueue();
+            persistQueue();
+        });
+    }
+})();
+
 // Supabase Realtime subscription for live updates.
 // Verbose logging so a failing subscription is obvious in DevTools.
 (function () {

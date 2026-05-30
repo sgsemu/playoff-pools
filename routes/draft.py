@@ -162,6 +162,35 @@ def _build_meta_bar(members, picks, snake, current_pick_index, viewer_user_id, u
     }
 
 
+def _viewer_queue_view(team_groups, viewer_member, taken_refs):
+    """Build the viewer's queue rows for the My Queue panel.
+
+    Each row carries team_ref, name/abbr, logo, grouping, and a taken flag.
+    Stale refs (no longer draftable) are silently dropped — the cleaned list
+    is also returned so the JS state matches what's rendered.
+    """
+    queue_refs = list((viewer_member or {}).get("queue") or [])
+    if not queue_refs:
+        return [], []
+    all_teams = {t["id"]: t for g in team_groups for t in g["teams"]}
+    rows = []
+    cleaned = []
+    for ref in queue_refs:
+        t = all_teams.get(ref)
+        if not t:
+            continue
+        rows.append({
+            "team_ref": ref,
+            "team_name": t["name"],
+            "team_abbr": t["abbreviation"],
+            "logo_url": t.get("logo_url"),
+            "grouping": t.get("grouping"),
+            "taken": ref in taken_refs,
+        })
+        cleaned.append(ref)
+    return rows, cleaned
+
+
 def _order_members_for_draft(members):
     """Sort members by draft_position (nulls last), then joined_at ascending.
 
@@ -230,6 +259,11 @@ def draft_room(pool_id):
 
     meta = _build_meta_bar(members, picks, snake, current_pick_index, session.get("user_id"))
 
+    viewer_user_id = session.get("user_id")
+    viewer_member = next((m for m in members if m.get("user_id") == viewer_user_id), None)
+    viewer_member_id = viewer_member["id"] if viewer_member else None
+    viewer_queue, viewer_queue_refs = _viewer_queue_view(team_groups, viewer_member, taken_refs)
+
     template = "pool/draft_room.html" if pool["type"] == "draft" else "pool/auction_room.html"
     return render_template(template,
         pool=pool, members=members, picks=picks,
@@ -237,7 +271,10 @@ def draft_room(pool_id):
         current_turn=current_turn,
         current_pick_index=current_pick_index,
         leftover_count=leftover_count,
-        meta=meta)
+        meta=meta,
+        viewer_member_id=viewer_member_id,
+        viewer_queue=viewer_queue,
+        viewer_queue_refs=viewer_queue_refs)
 
 
 @draft_bp.route("/pool/<pool_id>/draft/pick", methods=["POST"])
@@ -469,6 +506,52 @@ def finalize_draft(pool_id):
         pass
 
     return jsonify({"success": True})
+
+
+@draft_bp.route("/pool/<pool_id>/queue", methods=["POST"])
+@login_required
+def set_queue(pool_id):
+    """Replace the viewer's queue with the submitted ordered list of team_refs.
+
+    Refs that aren't in this pool's competitions are filtered out, duplicates
+    collapsed, original order preserved. Allowed in pending and active states.
+    """
+    sb = get_service_client()
+    pool = sb.table("pools").select("draft_status").eq("id", pool_id).execute().data
+    if not pool:
+        return jsonify({"error": "Pool not found"}), 404
+    if pool[0]["draft_status"] == "complete":
+        return jsonify({"error": "Draft is complete"}), 409
+
+    member = sb.table("pool_members").select("id").eq(
+        "pool_id", pool_id
+    ).eq("user_id", session["user_id"]).execute().data
+    if not member:
+        return jsonify({"error": "Not a member"}), 403
+    member_id = member[0]["id"]
+
+    data = request.get_json(silent=True) or {}
+    team_refs = data.get("team_refs", [])
+    if not isinstance(team_refs, list):
+        return jsonify({"error": "team_refs must be a list"}), 400
+
+    valid_refs = set()
+    if team_refs:
+        comp_ids = set(get_pool_competition_ids(sb, pool_id))
+        teams = sb.table("teams").select("id,competition_id").in_(
+            "id", team_refs
+        ).execute().data
+        valid_refs = {t["id"] for t in teams if t["competition_id"] in comp_ids}
+
+    seen = set()
+    cleaned = []
+    for r in team_refs:
+        if r in valid_refs and r not in seen:
+            seen.add(r)
+            cleaned.append(r)
+
+    sb.table("pool_members").update({"queue": cleaned}).eq("id", member_id).execute()
+    return jsonify({"success": True, "queue": cleaned})
 
 
 @draft_bp.route("/pool/<pool_id>/draft/order", methods=["POST"])

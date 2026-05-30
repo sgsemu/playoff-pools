@@ -88,7 +88,43 @@
         </div>
         {% endif %}
     </section>
+    {% endif %}
 
+    {% if viewer_member_id and pool.draft_status in ('pending', 'active') %}
+    <section class="queue-panel" id="queue-panel">
+        <h2 class="section-title">My Queue</h2>
+        <p class="queue-hint">
+            {% if pool.draft_status == 'pending' %}Rank teams you want. When the draft starts you can pick straight from here.
+            {% else %}Pick from your queue when it's your turn. Taken teams are crossed out — skip past them.{% endif %}
+        </p>
+        <ol class="queue-list" id="queue-list">
+            {% for row in viewer_queue %}
+            <li class="queue-item{% if row.taken %} queue-item-taken{% endif %}"
+                data-team-ref="{{ row.team_ref }}"
+                draggable="{% if row.taken %}false{% else %}true{% endif %}">
+                <span class="queue-rank">{{ loop.index }}</span>
+                <span class="queue-handle" aria-hidden="true">⋮⋮</span>
+                {% if row.logo_url %}<img class="queue-logo" src="{{ row.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+                <span class="queue-team-name">{{ row.team_name }}{% if row.grouping %} <span class="queue-group">· Grp {{ row.grouping }}</span>{% endif %}</span>
+                {% if row.taken %}<span class="queue-taken-pill">Taken</span>{% endif %}
+                <span class="queue-actions">
+                    <button type="button" class="queue-btn" onclick="moveQueueUp('{{ row.team_ref }}')" aria-label="Move up">↑</button>
+                    <button type="button" class="queue-btn" onclick="moveQueueDown('{{ row.team_ref }}')" aria-label="Move down">↓</button>
+                    {% if pool.draft_status == 'active' and meta and meta.is_my_turn and not row.taken %}
+                    <button type="button" class="queue-btn queue-btn-pick" onclick="pickTeam('{{ row.team_ref }}', '{{ row.team_name | e }}', '{{ row.logo_url or '' }}')">Pick</button>
+                    {% endif %}
+                    <button type="button" class="queue-btn queue-btn-remove" onclick="toggleQueue('{{ row.team_ref }}')" aria-label="Remove">×</button>
+                </span>
+            </li>
+            {% else %}
+            <li class="queue-empty">No teams queued yet. Tap ★ on any team below to add it.</li>
+            {% endfor %}
+        </ol>
+    </section>
+    {% endif %}
+
+    {% if pool.draft_status in ('pending', 'active') %}
+    {% set can_pick = (pool.draft_status == 'active' and meta and meta.is_my_turn) %}
     {% for group in team_groups %}
     {% if group.available %}
     <h2 class="section-title">
@@ -102,28 +138,40 @@
         </h3>
         <div class="team-grid">
             {% for team in sg.teams %}
-            <button class="team-card" data-team-ref="{{ team.id }}"
-                    {% if not meta.is_my_turn %}disabled aria-label="Wait for your turn"{% endif %}
-                    onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
-                {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
-                <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else '' }}</div>
-                <div class="team-name">{{ team.abbreviation }}</div>
-                <div class="team-full">{{ team.name }}</div>
-            </button>
+            <div class="team-card-wrap{% if team.id in viewer_queue_refs %} team-card-queued{% endif %}" data-team-ref="{{ team.id }}">
+                <button class="team-card" data-team-ref="{{ team.id }}"
+                        {% if not can_pick %}disabled aria-label="Wait for your turn"{% endif %}
+                        onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
+                    {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+                    <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else '' }}</div>
+                    <div class="team-name">{{ team.abbreviation }}</div>
+                    <div class="team-full">{{ team.name }}</div>
+                </button>
+                {% if viewer_member_id %}
+                <button type="button" class="team-card-star" data-team-ref="{{ team.id }}"
+                        onclick="toggleQueue('{{ team.id }}')" aria-label="Toggle queue">★</button>
+                {% endif %}
+            </div>
             {% endfor %}
         </div>
         {% endfor %}
     {% else %}
         <div class="team-grid" id="teams-{{ group.competition.id }}">
             {% for team in group.available %}
-            <button class="team-card" data-team-ref="{{ team.id }}"
-                    {% if not meta.is_my_turn %}disabled aria-label="Wait for your turn"{% endif %}
-                    onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
-                {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
-                <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else (team.grouping or '') }}</div>
-                <div class="team-name">{{ team.abbreviation }}</div>
-                <div class="team-full">{{ team.name }}</div>
-            </button>
+            <div class="team-card-wrap{% if team.id in viewer_queue_refs %} team-card-queued{% endif %}" data-team-ref="{{ team.id }}">
+                <button class="team-card" data-team-ref="{{ team.id }}"
+                        {% if not can_pick %}disabled aria-label="Wait for your turn"{% endif %}
+                        onclick="pickTeam('{{ team.id }}', '{{ team.name | e }}', '{{ team.logo_url or '' }}')">
+                    {% if team.logo_url %}<img class="team-card-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+                    <div class="team-seed">{{ ('#' ~ team.seed) if team.seed else (team.grouping or '') }}</div>
+                    <div class="team-name">{{ team.abbreviation }}</div>
+                    <div class="team-full">{{ team.name }}</div>
+                </button>
+                {% if viewer_member_id %}
+                <button type="button" class="team-card-star" data-team-ref="{{ team.id }}"
+                        onclick="toggleQueue('{{ team.id }}')" aria-label="Toggle queue">★</button>
+                {% endif %}
+            </div>
             {% endfor %}
         </div>
     {% endif %}
@@ -227,6 +275,8 @@
     const CURRENT_USER_NAME = {{ session.get('display_name', '') | tojson }};
     const SUPABASE_URL = "{{ config.SUPABASE_URL }}";
     const SUPABASE_KEY = "{{ config.SUPABASE_KEY }}";
+    const VIEWER_MEMBER_ID = {{ viewer_member_id | tojson }};
+    const INITIAL_QUEUE = {{ viewer_queue_refs | tojson }};
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/static/js/draft.js"></script>
