@@ -236,6 +236,7 @@ function appendPick(pickOrder, teamName, logoUrl) {
     }
 
     window.toggleQueue = async function (teamRef) {
+        console.log("[queue] toggle", teamRef);
         const idx = currentQueue.indexOf(teamRef);
         if (idx === -1) {
             currentQueue.push(teamRef);
