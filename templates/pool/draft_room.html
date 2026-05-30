@@ -271,10 +271,10 @@
 
 {% block scripts %}
 <script>
-    const POOL_ID = "{{ pool.id }}";
+    const POOL_ID = {{ pool.id | tojson }};
     const CURRENT_USER_NAME = {{ session.get('display_name', '') | tojson }};
-    const SUPABASE_URL = "{{ config.SUPABASE_URL }}";
-    const SUPABASE_KEY = "{{ config.SUPABASE_KEY }}";
+    const SUPABASE_URL = {{ config.SUPABASE_URL | tojson }};
+    const SUPABASE_KEY = {{ config.SUPABASE_KEY | tojson }};
     const VIEWER_MEMBER_ID = {{ viewer_member_id | tojson }};
     const INITIAL_QUEUE = {{ viewer_queue_refs | tojson }};
 </script>
