@@ -213,8 +213,20 @@ function appendPick(pickOrder, teamName, logoUrl) {
 // or ↑↓ buttons. Toggle reloads so the queue panel re-renders cleanly;
 // reorder just shuffles DOM + persists (no reload).
 (function () {
-    if (typeof VIEWER_MEMBER_ID === "undefined" || !VIEWER_MEMBER_ID) return;
-    let currentQueue = Array.isArray(INITIAL_QUEUE) ? INITIAL_QUEUE.slice() : [];
+    // Log the initial state so a missing VIEWER_MEMBER_ID or INITIAL_QUEUE
+    // is obvious in DevTools. Function definitions below are unconditional
+    // so an inline onclick="toggleQueue(...)" never hits ReferenceError.
+    console.log("[queue] init", {
+        VIEWER_MEMBER_ID: typeof VIEWER_MEMBER_ID !== "undefined" ? VIEWER_MEMBER_ID : "(undeclared)",
+        INITIAL_QUEUE: typeof INITIAL_QUEUE !== "undefined" ? INITIAL_QUEUE : "(undeclared)",
+    });
+
+    function viewerMemberId() {
+        return (typeof VIEWER_MEMBER_ID !== "undefined") ? VIEWER_MEMBER_ID : null;
+    }
+
+    let currentQueue = (typeof INITIAL_QUEUE !== "undefined" && Array.isArray(INITIAL_QUEUE))
+        ? INITIAL_QUEUE.slice() : [];
 
     async function persistQueue() {
         try {
@@ -236,7 +248,11 @@ function appendPick(pickOrder, teamName, logoUrl) {
     }
 
     window.toggleQueue = async function (teamRef) {
-        console.log("[queue] toggle", teamRef);
+        console.log("[queue] toggle", teamRef, "member:", viewerMemberId());
+        if (!viewerMemberId()) {
+            alert("Can't find your pool membership in this page's state. Reload and try again.");
+            return;
+        }
         const idx = currentQueue.indexOf(teamRef);
         if (idx === -1) {
             currentQueue.push(teamRef);
