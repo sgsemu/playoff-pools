@@ -247,22 +247,133 @@ function appendPick(pickOrder, teamName, logoUrl) {
         }
     }
 
-    window.toggleQueue = async function (teamRef) {
-        console.log("[queue] toggle", teamRef, "member:", viewerMemberId());
+    function buildQueueRowFromCard(wrap, teamRef) {
+        // Build a queue <li> from a team card's DOM, so adding feels instant
+        // without a server round-trip + reload to re-render the panel.
+        const card = wrap.querySelector(".team-card");
+        const logoImg = card ? card.querySelector(".team-card-logo") : null;
+        const teamFull = card ? card.querySelector(".team-full") : null;
+        const teamSeed = card ? card.querySelector(".team-seed") : null;
+        const teamNameText = teamFull ? teamFull.textContent.trim() : teamRef;
+        const logoUrl = (logoImg && logoImg.src) ? logoImg.src : "";
+
+        const li = document.createElement("li");
+        li.className = "queue-item";
+        li.dataset.teamRef = teamRef;
+        li.draggable = true;
+
+        const rank = document.createElement("span");
+        rank.className = "queue-rank";
+        rank.textContent = "?";
+
+        const handle = document.createElement("span");
+        handle.className = "queue-handle";
+        handle.setAttribute("aria-hidden", "true");
+        handle.textContent = "⋮⋮";
+
+        li.append(rank, handle);
+
+        if (logoUrl) {
+            const logo = document.createElement("img");
+            logo.className = "queue-logo";
+            logo.src = logoUrl;
+            logo.alt = "";
+            logo.onerror = function () { this.style.display = "none"; };
+            li.appendChild(logo);
+        }
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "queue-team-name";
+        nameSpan.textContent = teamNameText;
+        // Treat a single A-Z seed-text as a group letter (WC); skip for numeric seeds.
+        const seedText = teamSeed ? teamSeed.textContent.trim() : "";
+        if (seedText.length === 1 && /[A-Z]/.test(seedText)) {
+            const grp = document.createElement("span");
+            grp.className = "queue-group";
+            grp.textContent = ` · Grp ${seedText}`;
+            nameSpan.appendChild(grp);
+        }
+        li.appendChild(nameSpan);
+
+        const actions = document.createElement("span");
+        actions.className = "queue-actions";
+
+        const up = document.createElement("button");
+        up.type = "button"; up.className = "queue-btn";
+        up.setAttribute("aria-label", "Move up"); up.textContent = "↑";
+        up.onclick = () => moveQueueUp(teamRef);
+
+        const down = document.createElement("button");
+        down.type = "button"; down.className = "queue-btn";
+        down.setAttribute("aria-label", "Move down"); down.textContent = "↓";
+        down.onclick = () => moveQueueDown(teamRef);
+
+        actions.append(up, down);
+
+        if (typeof CAN_PICK !== "undefined" && CAN_PICK) {
+            const pick = document.createElement("button");
+            pick.type = "button"; pick.className = "queue-btn queue-btn-pick";
+            pick.textContent = "Pick";
+            pick.onclick = () => pickTeam(teamRef, teamNameText, logoUrl);
+            actions.appendChild(pick);
+        }
+
+        const remove = document.createElement("button");
+        remove.type = "button"; remove.className = "queue-btn queue-btn-remove";
+        remove.setAttribute("aria-label", "Remove"); remove.textContent = "×";
+        remove.onclick = () => toggleQueue(teamRef);
+        actions.appendChild(remove);
+
+        li.appendChild(actions);
+        return li;
+    }
+
+    function updateQueueEmptyPlaceholder() {
+        const list = document.getElementById("queue-list");
+        if (!list) return;
+        const existing = list.querySelector(".queue-empty");
+        const hasItems = list.querySelector(".queue-item") !== null;
+        if (hasItems && existing) existing.remove();
+        if (!hasItems && !existing) {
+            const li = document.createElement("li");
+            li.className = "queue-empty";
+            li.textContent = "No teams queued yet. Tap ★ on any team below to add it.";
+            list.appendChild(li);
+        }
+    }
+
+    window.toggleQueue = function (teamRef) {
         if (!viewerMemberId()) {
             alert("Can't find your pool membership in this page's state. Reload and try again.");
             return;
         }
         const idx = currentQueue.indexOf(teamRef);
-        if (idx === -1) {
+        const adding = idx === -1;
+        const list = document.getElementById("queue-list");
+        const wrap = document.querySelector(`.team-card-wrap[data-team-ref="${teamRef}"]`);
+
+        // Optimistic local state + DOM update so the click feels instant.
+        if (adding) {
             currentQueue.push(teamRef);
         } else {
             currentQueue.splice(idx, 1);
         }
-        const wrap = document.querySelector(`.team-card-wrap[data-team-ref="${teamRef}"]`);
-        if (wrap) wrap.classList.toggle("team-card-queued", idx === -1);
-        const ok = await persistQueue();
-        if (ok) location.reload();
+        if (wrap) wrap.classList.toggle("team-card-queued", adding);
+
+        if (list) {
+            if (adding) {
+                if (wrap) list.appendChild(buildQueueRowFromCard(wrap, teamRef));
+            } else {
+                const row = list.querySelector(`.queue-item[data-team-ref="${teamRef}"]`);
+                if (row) row.remove();
+            }
+            renumberQueue();
+            updateQueueEmptyPlaceholder();
+        }
+
+        // Persist in background. On failure, revert via a hard reload so the
+        // user sees server-true state instead of a phantom local change.
+        persistQueue().then((ok) => { if (!ok) location.reload(); });
     };
 
     function renumberQueue() {

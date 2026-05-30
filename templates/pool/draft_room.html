@@ -277,6 +277,7 @@
     const SUPABASE_KEY = {{ config.SUPABASE_KEY | tojson }};
     const VIEWER_MEMBER_ID = {{ viewer_member_id | tojson }};
     const INITIAL_QUEUE = {{ viewer_queue_refs | tojson }};
+    const CAN_PICK = {{ (pool.draft_status == 'active' and meta and meta.is_my_turn) | tojson }};
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/static/js/draft.js"></script>
