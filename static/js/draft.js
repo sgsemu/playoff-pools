@@ -481,3 +481,213 @@ function appendPick(pickOrder, teamName, logoUrl) {
     window.__draftChannel = channel;
     window.__draftSb = sb;
 })();
+
+// --- Mini-auction (post-snake) ---
+// Bid placement, commissioner seeds/deletes, force settle, countdown, realtime.
+(function () {
+    function fmtError(prefix) {
+        return async (resp) => {
+            const data = await resp.json().catch(() => ({}));
+            alert(data.error || prefix);
+        };
+    }
+
+    // Convert a datetime-local input ("2026-06-11T16:00") to a UTC ISO string
+    // by treating the input as local time. Browsers' Date() parses naive
+    // datetime strings as local, .toISOString() emits UTC — exactly the round
+    // trip we want when sending to the server.
+    function localToUtcIso(value) {
+        if (!value) return null;
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return null;
+        return d.toISOString();
+    }
+
+    // Reverse of the above: UTC ISO → "YYYY-MM-DDTHH:MM" in local time,
+    // for prefilling the datetime-local input from server state.
+    function utcIsoToLocalInput(iso) {
+        if (!iso) return "";
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return "";
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    window.startAuction = async function () {
+        const closesAtInput = document.getElementById("start-auction-closes-at");
+        const incrementInput = document.getElementById("start-auction-increment");
+        const errorEl = document.getElementById("start-auction-error");
+        if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+        const closes_at = localToUtcIso(closesAtInput && closesAtInput.value);
+        const bid_increment = parseInt((incrementInput && incrementInput.value) || "25", 10);
+        if (!closes_at) {
+            if (errorEl) { errorEl.textContent = "Enter a deadline"; errorEl.hidden = false; }
+            return;
+        }
+        const resp = await fetch(`/pool/${POOL_ID}/auction/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ closes_at, bid_increment }),
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            if (errorEl) { errorEl.textContent = data.error || "Failed to start auction"; errorEl.hidden = false; }
+        }
+    };
+
+    window.placeBid = async function (teamRef) {
+        const input = document.getElementById(`bid-input-${teamRef}`);
+        if (!input) return;
+        const amount = parseInt(input.value, 10);
+        if (!amount || amount <= 0) { alert("Enter a valid bid amount"); return; }
+        const resp = await fetch(`/pool/${POOL_ID}/auction/bid`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ team_ref: teamRef, amount }),
+        });
+        if (resp.ok) {
+            // Realtime will reload the page when the INSERT lands on this client.
+            // Optimistic UI: bump the input's min to current+increment so it
+            // doesn't look stuck while waiting for the realtime echo.
+            input.value = amount + (parseInt(input.step, 10) || 25);
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            alert(data.error || "Failed to place bid");
+        }
+    };
+
+    window.seedBid = async function () {
+        const member_id = document.getElementById("seed-bid-member").value;
+        const team_ref = document.getElementById("seed-bid-team").value;
+        const amount = parseInt(document.getElementById("seed-bid-amount").value, 10);
+        const errorEl = document.getElementById("seed-bid-error");
+        if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+        if (!member_id || !team_ref || !amount) {
+            if (errorEl) { errorEl.textContent = "All fields required"; errorEl.hidden = false; }
+            return;
+        }
+        const resp = await fetch(`/pool/${POOL_ID}/auction/seed`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ member_id, team_ref, amount }),
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            if (errorEl) { errorEl.textContent = data.error || "Failed to seed bid"; errorEl.hidden = false; }
+        }
+    };
+
+    window.deleteBid = async function (bidId) {
+        if (!confirm("Delete this bid?")) return;
+        const resp = await fetch(`/pool/${POOL_ID}/auction/delete-bid`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bid_id: bidId }),
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            await fmtError("Failed to delete bid")(resp);
+        }
+    };
+
+    window.forceSettle = async function () {
+        if (!confirm("Force-settle now? Each team goes to its highest current bidder, pool moves to complete.")) return;
+        const resp = await fetch(`/pool/${POOL_ID}/auction/force-settle`, { method: "POST" });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            await fmtError("Failed to settle")(resp);
+        }
+    };
+
+    window.updateClosesAt = async function () {
+        const input = document.getElementById("auction-closes-at-input");
+        const closes_at = localToUtcIso(input && input.value);
+        if (!closes_at) { alert("Enter a valid date/time"); return; }
+        const resp = await fetch(`/pool/${POOL_ID}/auction/update-closes-at`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ closes_at }),
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            await fmtError("Failed to update deadline")(resp);
+        }
+    };
+
+    // Prefill the commissioner's "edit closes_at" input with the current
+    // deadline rendered in the viewer's local timezone.
+    document.addEventListener("DOMContentLoaded", () => {
+        const editInput = document.getElementById("auction-closes-at-input");
+        const countdownEl = document.getElementById("auction-countdown");
+        if (editInput && countdownEl && countdownEl.dataset.closesAt) {
+            editInput.value = utcIsoToLocalInput(countdownEl.dataset.closesAt);
+        }
+        // Display the human-readable local closes_at next to "Closes".
+        const display = document.getElementById("auction-closes-at-display");
+        if (display && countdownEl && countdownEl.dataset.closesAt) {
+            const d = new Date(countdownEl.dataset.closesAt);
+            if (!isNaN(d.getTime())) {
+                display.textContent = d.toLocaleString();
+            }
+        }
+    });
+
+    // Live countdown to the deadline. Updates once per second; switches to
+    // "Closed" + locks the bid inputs when the deadline passes.
+    function updateCountdown() {
+        const countdownEl = document.getElementById("auction-countdown");
+        if (!countdownEl) return;
+        const closesAtRaw = countdownEl.dataset.closesAt;
+        if (!closesAtRaw) return;
+        const closesAt = new Date(closesAtRaw).getTime();
+        const remainingMs = closesAt - Date.now();
+        const textEl = document.getElementById("auction-countdown-text");
+        if (!textEl) return;
+        if (remainingMs <= 0) {
+            textEl.textContent = "Closed";
+            document.querySelectorAll(".auction-card-bid-btn").forEach((b) => { b.disabled = true; });
+            document.querySelectorAll(".auction-card-bid-input").forEach((i) => { i.disabled = true; });
+            return;
+        }
+        const days = Math.floor(remainingMs / 86400000);
+        const hours = Math.floor((remainingMs % 86400000) / 3600000);
+        const mins = Math.floor((remainingMs % 3600000) / 60000);
+        const secs = Math.floor((remainingMs % 60000) / 1000);
+        let text = "";
+        if (days > 0) text = `in ${days}d ${hours}h ${mins}m`;
+        else if (hours > 0) text = `in ${hours}h ${mins}m ${secs}s`;
+        else text = `in ${mins}m ${secs}s`;
+        textEl.textContent = text;
+    }
+    setInterval(updateCountdown, 1000);
+    document.addEventListener("DOMContentLoaded", updateCountdown);
+
+    // Realtime subscription for auction_bids on top of the existing
+    // draft_picks one. Any INSERT or DELETE triggers a reload so the
+    // grid shows fresh high bids + bidder names.
+    if (typeof SUPABASE_URL !== "undefined" && SUPABASE_URL && typeof supabase !== "undefined") {
+        const { createClient } = supabase;
+        const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+        const channel = sb.channel("auction-" + POOL_ID)
+            .on("postgres_changes", {
+                event: "*",
+                schema: "public",
+                table: "auction_bids",
+                filter: `pool_id=eq.${POOL_ID}`,
+            }, (payload) => {
+                console.log("[auction-realtime] change:", payload.eventType, payload);
+                location.reload();
+            })
+            .subscribe((status) => {
+                console.log("[auction-realtime] subscription status:", status);
+            });
+        window.__auctionChannel = channel;
+    }
+})();

@@ -264,6 +264,12 @@ def draft_room(pool_id):
     viewer_member_id = viewer_member["id"] if viewer_member else None
     viewer_queue, viewer_queue_refs = _viewer_queue_view(team_groups, viewer_member, taken_refs)
 
+    auction_cards = None
+    auction_all_bids = None
+    if pool["draft_status"] == "auction":
+        from routes.auction import build_auction_view
+        auction_cards, auction_all_bids = build_auction_view(sb, pool, team_groups, members)
+
     template = "pool/draft_room.html" if pool["type"] == "draft" else "pool/auction_room.html"
     return render_template(template,
         pool=pool, members=members, picks=picks,
@@ -274,7 +280,9 @@ def draft_room(pool_id):
         meta=meta,
         viewer_member_id=viewer_member_id,
         viewer_queue=viewer_queue,
-        viewer_queue_refs=viewer_queue_refs)
+        viewer_queue_refs=viewer_queue_refs,
+        auction_cards=auction_cards,
+        auction_all_bids=auction_all_bids)
 
 
 @draft_bp.route("/pool/<pool_id>/draft/pick", methods=["POST"])

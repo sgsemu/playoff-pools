@@ -90,6 +90,111 @@
     </section>
     {% endif %}
 
+    {% if pool.draft_status == 'auction' and auction_cards is not none %}
+    <section class="auction-section">
+        <div class="auction-header">
+            <h2 class="section-title">Mini-Auction · {{ auction_cards | length }} team{{ '' if auction_cards|length == 1 else 's' }} up for bid</h2>
+            <div class="auction-countdown" id="auction-countdown" data-closes-at="{{ pool.auction_closes_at }}">
+                Closes <span id="auction-closes-at-display">{{ pool.auction_closes_at }}</span> · <span id="auction-countdown-text">computing…</span>
+            </div>
+            <p class="auction-hint">
+                Bid in ${{ pool.auction_bid_increment }} increments. Highest bid at the deadline wins; cron auto-settles. Commissioner can adjust after.
+            </p>
+        </div>
+
+        <div class="auction-grid">
+            {% for card in auction_cards %}
+            <div class="auction-card" data-team-ref="{{ card.team_ref }}">
+                <div class="auction-card-header">
+                    {% if card.logo_url %}<img class="auction-card-logo" src="{{ card.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+                    <div class="auction-card-team">
+                        <div class="auction-card-name">{{ card.team_name }}</div>
+                        {% if card.grouping %}<div class="auction-card-group">Grp {{ card.grouping }}</div>{% endif %}
+                    </div>
+                </div>
+                <div class="auction-card-high">
+                    {% if card.high_amount %}
+                    <span class="auction-card-high-amount">${{ card.high_amount }}</span>
+                    <span class="auction-card-high-bidder">{{ card.high_bidder }}</span>
+                    <span class="auction-card-bid-count">{{ card.bid_count }} bid{{ '' if card.bid_count == 1 else 's' }}</span>
+                    {% else %}
+                    <span class="auction-card-no-bid">No bids yet</span>
+                    {% endif %}
+                </div>
+                <div class="auction-card-bid-row">
+                    <span class="auction-card-bid-dollar">$</span>
+                    <input type="number" class="auction-card-bid-input" id="bid-input-{{ card.team_ref }}"
+                           value="{{ card.next_min }}"
+                           min="{{ card.next_min }}" step="{{ pool.auction_bid_increment }}">
+                    <button type="button" class="btn btn-primary btn-sm auction-card-bid-btn"
+                            onclick="placeBid({{ card.team_ref | tojson }})">Bid</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if pool.creator_id == session.get('user_id') %}
+        <section class="auction-commissioner">
+            <h3 class="section-title">Auction Commissioner</h3>
+            <p class="commissioner-hint">Seed bids from group chat, edit the deadline, delete mistakes, or force settle.</p>
+
+            <div class="auction-commissioner-row">
+                <h4>Seed a bid (chat-bid honor)</h4>
+                <div class="assign-row">
+                    <label>Manager
+                        <select id="seed-bid-member">
+                            {% for m in members %}<option value="{{ m.id }}">{{ m.users.display_name }}</option>{% endfor %}
+                        </select>
+                    </label>
+                    <label>Team
+                        <select id="seed-bid-team">
+                            {% for card in auction_cards %}<option value="{{ card.team_ref }}">{{ card.team_name }}</option>{% endfor %}
+                        </select>
+                    </label>
+                    <label>Amount
+                        <input type="number" id="seed-bid-amount" min="{{ pool.auction_bid_increment }}"
+                               step="{{ pool.auction_bid_increment }}" value="{{ pool.auction_bid_increment }}">
+                    </label>
+                    <button class="btn btn-primary" type="button" onclick="seedBid()">Seed bid</button>
+                </div>
+                <div class="assign-error" id="seed-bid-error" hidden></div>
+            </div>
+
+            <div class="auction-commissioner-row">
+                <h4>Deadline</h4>
+                <div class="assign-row">
+                    <label>Closes at (your local time)
+                        <input type="datetime-local" id="auction-closes-at-input">
+                    </label>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="updateClosesAt()">Save</button>
+                </div>
+            </div>
+
+            <div class="auction-commissioner-row">
+                <h4>All bids ({{ auction_all_bids | length }})</h4>
+                <ul class="auction-bids-list">
+                    {% for b in auction_all_bids %}
+                    <li class="auction-bid-row">
+                        <span class="bid-team">{{ b.team_name }}</span>
+                        <span class="bid-amount">${{ b.amount }}</span>
+                        <span class="bid-member">{{ b.member_name }}</span>
+                        <button class="queue-btn queue-btn-remove" type="button" onclick="deleteBid({{ b.id | tojson }})" aria-label="Delete bid">×</button>
+                    </li>
+                    {% else %}
+                    <li class="queue-empty">No bids yet.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="finalize-row">
+                <button class="btn btn-danger" type="button" onclick="forceSettle()">Force settle now</button>
+                <span class="finalize-hint">Skip the deadline. Highest bidder wins each team; pool moves to complete.</span>
+            </div>
+        </section>
+        {% endif %}
+    </section>
+    {% endif %}
+
     {% if viewer_member_id and pool.draft_status in ('pending', 'active') %}
     <section class="queue-panel" id="queue-panel">
         <h2 class="section-title">My Queue</h2>
@@ -247,9 +352,26 @@
             <div class="assign-error" id="assign-error" hidden></div>
         </div>
 
+        {% if leftover_count and leftover_count > 0 %}
+        <div class="start-auction-row">
+            <h3 class="section-title">Mini-Auction for the {{ leftover_count }} leftover team{{ '' if leftover_count == 1 else 's' }}</h3>
+            <p class="commissioner-hint">Snake is finished. Open an auction so managers can bid (or you can hand-assign via the form above).</p>
+            <div class="assign-row">
+                <label>Closes at (your local time)
+                    <input type="datetime-local" id="start-auction-closes-at">
+                </label>
+                <label>$ increment
+                    <input type="number" id="start-auction-increment" min="1" value="25">
+                </label>
+                <button class="btn btn-primary" type="button" onclick="startAuction()">Start Auction</button>
+            </div>
+            <div class="assign-error" id="start-auction-error" hidden></div>
+        </div>
+        {% endif %}
+
         <div class="finalize-row">
             <button class="btn btn-danger" type="button" onclick="finalizeDraft()">Finalize draft</button>
-            <span class="finalize-hint">Locks the roster. No more picks, assigns, or removals.</span>
+            <span class="finalize-hint">Locks the roster. No more picks, assigns, or removals. Skips the mini-auction.</span>
         </div>
     </section>
 

@@ -2,13 +2,16 @@
   "version": 2,
   "builds": [
     { "src": "api/index.py", "use": "@vercel/python" },
-    { "src": "api/cron/sync_games.py", "use": "@vercel/python" }
+    { "src": "api/cron/sync_games.py", "use": "@vercel/python" },
+    { "src": "api/cron/settle_auctions.py", "use": "@vercel/python" }
   ],
   "routes": [
     { "src": "/api/cron/sync-games", "dest": "api/cron/sync_games.py" },
+    { "src": "/api/cron/settle-auctions", "dest": "api/cron/settle_auctions.py" },
     { "src": "/(.*)", "dest": "api/index.py" }
   ],
   "crons": [
-    { "path": "/api/cron/sync-games", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/sync-games", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/settle-auctions", "schedule": "*/15 * * * *" }
   ]
 }
