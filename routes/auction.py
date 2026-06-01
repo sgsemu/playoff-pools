@@ -68,8 +68,8 @@ def start_auction(pool_id):
     pool = pool[0]
     if pool["creator_id"] != session["user_id"]:
         return jsonify({"error": "Only the creator can start the auction"}), 403
-    if pool["draft_status"] != "active":
-        return jsonify({"error": "Snake must be active before starting the auction"}), 409
+    if pool["draft_status"] not in ("active", "complete"):
+        return jsonify({"error": "Snake must be active or complete before starting the auction"}), 409
 
     data = request.get_json(silent=True) or {}
     closes_at = data.get("closes_at")

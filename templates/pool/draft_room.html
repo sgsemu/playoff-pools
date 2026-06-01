@@ -376,6 +376,27 @@
     </section>
 
     {% endif %}
+
+    {# Start-auction is also reachable post-finalize: snake done, still leftovers, no auction running yet. #}
+    {% if pool.draft_status == 'complete' and pool.creator_id == session.get('user_id') and leftover_count and leftover_count > 0 %}
+    <section class="commissioner">
+        <h2 class="section-title">Commissioner</h2>
+        <div class="start-auction-row">
+            <h3 class="section-title">Mini-Auction for the {{ leftover_count }} leftover team{{ '' if leftover_count == 1 else 's' }}</h3>
+            <p class="commissioner-hint">Snake is finalized. Open a mini-auction so managers can bid on the leftovers.</p>
+            <div class="assign-row">
+                <label>Closes at (your local time)
+                    <input type="datetime-local" id="start-auction-closes-at">
+                </label>
+                <label>$ increment
+                    <input type="number" id="start-auction-increment" min="1" value="25">
+                </label>
+                <button class="btn btn-primary" type="button" onclick="startAuction()">Start Auction</button>
+            </div>
+            <div class="assign-error" id="start-auction-error" hidden></div>
+        </div>
+    </section>
+    {% endif %}
 </div>
 
 <a href="/pool/{{ pool.id }}" class="btn btn-secondary" style="margin-top:16px;">Back to Pool</a>
