@@ -19,5 +19,10 @@ ALTER TABLE pools
     ADD COLUMN IF NOT EXISTS auction_bid_increment INT NOT NULL DEFAULT 25;
 
 -- Realtime delivery + RLS off (same pattern that draft_picks uses).
-ALTER PUBLICATION supabase_realtime ADD TABLE auction_bids;
+-- Wrap the publication add so re-running this file doesn't error when the
+-- table is already a member.
+DO $pub$ BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE auction_bids;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $pub$;
 ALTER TABLE auction_bids DISABLE ROW LEVEL SECURITY;
