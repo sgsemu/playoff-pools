@@ -398,12 +398,33 @@ def fetch_group_winners(competition):
         return set()
     winners = set()
     for group in data.get("children", []):
-        for entry in group.get("standings", {}).get("entries", []):
+        entries = group.get("standings", {}).get("entries", [])
+        if not entries:
+            continue
+        # A group winner is only final once the group stage is complete: in a
+        # round-robin of n teams, every team plays n-1 games. Before that ESPN
+        # still ranks one team #1 by default ordering (rank=1 at gamesPlayed=0),
+        # which would award the +2 group-winner bonus on day zero. Require all
+        # entries to have finished their games before crowning a winner.
+        required = len(entries) - 1
+        parsed = []
+        complete = True
+        for entry in entries:
             stats = {s["name"]: s.get("value", s.get("displayValue")) for s in entry.get("stats", [])}
             try:
-                rank = int(stats.get("rank"))
+                gp = int(float(stats.get("gamesPlayed")))
             except (TypeError, ValueError):
-                continue
+                gp = 0
+            if gp < required:
+                complete = False
+            try:
+                rank = int(float(stats.get("rank")))
+            except (TypeError, ValueError):
+                rank = None
+            parsed.append((rank, entry))
+        if not complete:
+            continue
+        for rank, entry in parsed:
             if rank == 1:
                 winners.add(int(entry["team"]["id"]))
     return winners

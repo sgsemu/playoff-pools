@@ -110,13 +110,39 @@ def test_fetch_competition_results_detects_draw():
     assert games[0]["is_draw"] is True
 
 
-def test_fetch_group_winners_returns_rank1_per_group():
+def _standings_entry(team_id, rank, games_played):
+    return {"team": {"id": team_id}, "stats": [
+        {"name": "rank", "value": float(rank)},
+        {"name": "gamesPlayed", "value": float(games_played)},
+    ]}
+
+
+def test_fetch_group_winners_empty_before_group_stage_complete():
+    # Tournament not started (or mid-group-stage): ESPN still ranks one team #1
+    # per group even at gamesPlayed=0. No group is decided yet, so no winners —
+    # otherwise the +2 group-winner bonus is awarded on day zero.
     payload = {"children": [
         {"name": "Group A", "standings": {"entries": [
-            {"team": {"id": "203"}, "stats": [{"name": "rank", "value": 1}]},
-            {"team": {"id": "467"}, "stats": [{"name": "rank", "value": 2}]}]}},
+            _standings_entry("203", 1, 0), _standings_entry("467", 2, 0),
+            _standings_entry("560", 3, 0), _standings_entry("561", 4, 0)]}},
+    ]}
+    from services.espn_api import fetch_group_winners
+    with patch("services.espn_api.requests.get") as g:
+        g.return_value = MagicMock(json=lambda: payload)
+        g.return_value.raise_for_status = lambda: None
+        winners = fetch_group_winners({"espn_sport": "soccer", "espn_slug": "fifa.world"})
+    assert winners == set()
+
+
+def test_fetch_group_winners_returns_rank1_once_group_complete():
+    # Group stage finished: 4-team round-robin, each team played 3. Rank-1 wins.
+    payload = {"children": [
+        {"name": "Group A", "standings": {"entries": [
+            _standings_entry("203", 1, 3), _standings_entry("467", 2, 3),
+            _standings_entry("560", 3, 3), _standings_entry("561", 4, 3)]}},
         {"name": "Group B", "standings": {"entries": [
-            {"team": {"id": "202"}, "stats": [{"name": "rank", "value": 1}]}]}},
+            _standings_entry("202", 1, 3), _standings_entry("212", 2, 3),
+            _standings_entry("213", 3, 3), _standings_entry("214", 4, 3)]}},
     ]}
     from services.espn_api import fetch_group_winners
     with patch("services.espn_api.requests.get") as g:
