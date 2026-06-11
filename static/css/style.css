@@ -725,15 +725,18 @@ a.best-line-book:hover { background: #353550; }
 .auction-card-bid-row {
     display: flex; align-items: center; gap: 6px;
 }
-.auction-card-bid-dollar { color: #666; }
+.auction-card-bid-dollar { color: #666; flex-shrink: 0; }
 .auction-card-bid-input {
-    flex: 1; min-width: 0;
+    flex: 1 1 80px; min-width: 70px;
     background: #1a1a2e; border: 1px solid #2a2a3e; color: #e0e0e0;
     padding: 6px 8px; border-radius: 6px; font-size: 0.95rem;
     font-variant-numeric: tabular-nums;
 }
+/* Override the global .btn-primary { width: 100% } so the button doesn't
+   eat the entire row and squash the bid input. */
 .auction-card-bid-btn {
-    flex-shrink: 0;
+    flex-shrink: 0; width: auto; min-width: 64px;
+    padding: 6px 14px; font-size: 0.9rem;
 }
 .auction-card-bid-input:disabled, .auction-card-bid-btn:disabled {
     opacity: 0.4; cursor: not-allowed;

@@ -127,7 +127,7 @@
                            value="{{ card.next_min }}"
                            min="{{ card.next_min }}" step="{{ pool.auction_bid_increment }}">
                     <button type="button" class="btn btn-primary btn-sm auction-card-bid-btn"
-                            onclick="placeBid({{ card.team_ref | tojson }})">Bid</button>
+                            onclick='placeBid({{ card.team_ref | tojson }})'>Bid</button>
                 </div>
             </div>
             {% endfor %}
@@ -178,7 +178,7 @@
                         <span class="bid-team">{{ b.team_name }}</span>
                         <span class="bid-amount">${{ b.amount }}</span>
                         <span class="bid-member">{{ b.member_name }}</span>
-                        <button class="queue-btn queue-btn-remove" type="button" onclick="deleteBid({{ b.id | tojson }})" aria-label="Delete bid">×</button>
+                        <button class="queue-btn queue-btn-remove" type="button" onclick='deleteBid({{ b.id | tojson }})' aria-label="Delete bid">×</button>
                     </li>
                     {% else %}
                     <li class="queue-empty">No bids yet.</li>

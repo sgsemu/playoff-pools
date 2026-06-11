@@ -3,6 +3,18 @@ import pytest
 from unittest.mock import patch, MagicMock
 from app import create_app
 
+# The budget/Calcutta auction *pool type* these tests cover was retired on
+# 2026-06-11 when the post-snake mini-auction took over the shared
+# /pool/<id>/auction/bid endpoint. The mini-auction is the only auction going
+# forward (its tests live in test_draft.py). Re-enabling a standalone auction
+# format means rewiring the legacy flow onto the competition registry
+# (available_teams / team_ref / resolve / settle) — see the project doc's
+# "Known issues / debt" section. These assertions are kept (not deleted) as the
+# spec for that future rewire.
+pytestmark = pytest.mark.skip(
+    reason="legacy budget/Calcutta auction pool type retired; mini-auction supersedes it"
+)
+
 
 @pytest.fixture
 def authed_client():

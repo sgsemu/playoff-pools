@@ -213,6 +213,19 @@ def draft_room(pool_id):
         return "Pool not found", 404
     pool = pool[0]
 
+    # Self-healing settle: if we're in auction state and the deadline has
+    # passed, settle inline before rendering. Hobby tier cron runs only
+    # once a day, so this is the actual mechanism for hitting close-to-
+    # deadline settlement — first viewer past the deadline triggers it.
+    if pool.get("draft_status") == "auction" and pool.get("auction_closes_at"):
+        from routes.auction import _parse_iso, settle_pool
+        from datetime import datetime, timezone
+        deadline = _parse_iso(pool["auction_closes_at"])
+        if deadline and datetime.now(timezone.utc) >= deadline:
+            settle_pool(sb, pool)
+            # Refetch with the new state.
+            pool = sb.table("pools").select("*").eq("id", pool_id).execute().data[0]
+
     raw_members = sb.table("pool_members").select("*").eq(
         "pool_id", pool_id
     ).order("joined_at").execute().data

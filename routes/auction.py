@@ -5,8 +5,10 @@ Workflow:
 - Members place bids (validated against current high + increment).
 - Commissioner can seed bids on behalf of others (chat bids), delete bids,
   edit closes_at, and force-settle in emergencies.
-- A Vercel cron runs every 15 min, settling any pool whose closes_at has
-  passed by writing the highest bidder per team as a draft_pick.
+- Settlement (highest bidder per team -> draft_pick) happens two ways: a daily
+  Vercel cron (Hobby tier caps crons at once/day), plus a self-healing inline
+  settle in draft_room() — the first viewer past closes_at triggers it, which
+  is the real near-deadline mechanism.
 """
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, session
