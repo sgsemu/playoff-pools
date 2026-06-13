@@ -95,6 +95,37 @@ def _inherited_scoring_config(sb, competition_ids):
     return None
 
 
+def _competition_complete(sb, comp_id):
+    """A competition is complete once its champion is decided — a game recorded
+    at the terminal 'final' stage. Round-based comps (NBA/NHL) carry no 'final'
+    stage, so they can't be auto-detected yet and are treated as ongoing."""
+    comp = sb.table("competitions").select("stages").eq("id", comp_id).execute().data
+    if not comp:
+        return False
+    stage_keys = {s.get("key") for s in (comp[0].get("stages") or [])}
+    if "final" not in stage_keys:
+        return False
+    finals = sb.table("game_results").select("id").eq(
+        "competition_id", comp_id
+    ).eq("stage", "final").limit(1).execute().data
+    return bool(finals)
+
+
+def _pool_phase(sb, pool):
+    """Bucket a pool into 'upcoming' | 'active' | 'past'.
+
+    upcoming: still being set up or drafted (draft not complete).
+    active:   drafted and the tournament is still being played.
+    past:     every competition the pool drafts from has crowned a champion.
+    """
+    if pool.get("draft_status") != "complete":
+        return "upcoming"
+    comp_ids = get_pool_competition_ids(sb, pool["id"])
+    if comp_ids and all(_competition_complete(sb, cid) for cid in comp_ids):
+        return "past"
+    return "active"
+
+
 @pools_bp.route("/dashboard")
 @login_required
 def dashboard():
@@ -109,10 +140,14 @@ def dashboard():
         if pool_data:
             pools.append(pool_data[0] | {"role": m["role"]})
 
-    active = [p for p in pools if p["draft_status"] != "complete"]
-    past = [p for p in pools if p["draft_status"] == "complete"]
+    buckets = {"upcoming": [], "active": [], "past": []}
+    for p in pools:
+        buckets[_pool_phase(sb, p)].append(p)
 
-    return render_template("dashboard.html", active_pools=active, past_pools=past)
+    return render_template("dashboard.html",
+        upcoming_pools=buckets["upcoming"],
+        active_pools=buckets["active"],
+        past_pools=buckets["past"])
 
 
 @pools_bp.route("/pool/create", methods=["GET", "POST"])

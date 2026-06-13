@@ -43,6 +43,59 @@ def test_dashboard_loads(mock_sb, authed_client):
     assert b"My Pools" in resp.data
 
 
+def test_pool_phase_upcoming_when_draft_not_complete():
+    from routes.pools import _pool_phase
+    for status in ("pending", "active", "auction"):
+        assert _pool_phase(MagicMock(), {"id": "p", "draft_status": status}) == "upcoming"
+
+
+@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-wc"])
+def test_pool_phase_active_when_drafted_and_no_final_yet():
+    # Draft complete, competition has a 'final' stage but no final game recorded.
+    def table(name):
+        t = MagicMock()
+        if name == "competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"stages": [{"key": "group"}, {"key": "final"}]}]
+        elif name == "game_results":
+            t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+        return t
+    sb = MagicMock(); sb.table.side_effect = table
+    from routes.pools import _pool_phase
+    assert _pool_phase(sb, {"id": "p", "draft_status": "complete"}) == "active"
+
+
+@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-wc"])
+def test_pool_phase_past_when_final_recorded():
+    def table(name):
+        t = MagicMock()
+        if name == "competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"stages": [{"key": "group"}, {"key": "final"}]}]
+        elif name == "game_results":
+            t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+                {"id": "g-final"}]
+        return t
+    sb = MagicMock(); sb.table.side_effect = table
+    from routes.pools import _pool_phase
+    assert _pool_phase(sb, {"id": "p", "draft_status": "complete"}) == "past"
+
+
+@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-nba"])
+def test_pool_phase_active_when_competition_has_no_final_stage():
+    # Round-based comps (NBA/NHL) have no 'final' stage -> can't auto-detect
+    # completion -> stay active rather than wrongly flipping to past.
+    def table(name):
+        t = MagicMock()
+        if name == "competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"stages": []}]
+        return t
+    sb = MagicMock(); sb.table.side_effect = table
+    from routes.pools import _pool_phase
+    assert _pool_phase(sb, {"id": "p", "draft_status": "complete"}) == "active"
+
+
 @patch("routes.pools.get_service_client")
 def test_create_pool(mock_sb, authed_client):
     mock_table = MagicMock()

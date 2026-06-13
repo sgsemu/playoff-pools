@@ -7,6 +7,22 @@
         <a href="/pool/create" class="btn btn-primary">+ Create Pool</a>
     </div>
 
+    {% if upcoming_pools %}
+    <h2 class="section-title">Upcoming</h2>
+    <div class="pool-list">
+        {% for pool in upcoming_pools %}
+        <a href="/pool/{{ pool.id }}" class="pool-card">
+            <div class="pool-card-type">{{ pool.type | replace('_', ' ') | title }}</div>
+            <h3>{{ pool.name }}</h3>
+            <div class="pool-card-meta">
+                <span class="badge badge-{{ pool.draft_status }}">{{ pool.draft_status }}</span>
+                <span>{{ pool.league | upper }}</span>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     {% if active_pools %}
     <h2 class="section-title">Active</h2>
     <div class="pool-list">
@@ -35,7 +51,7 @@
     </div>
     {% endif %}
 
-    {% if not active_pools and not past_pools %}
+    {% if not upcoming_pools and not active_pools and not past_pools %}
     <div class="empty-state">
         <p>No pools yet. Create one or join with an invite link!</p>
     </div>
