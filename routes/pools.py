@@ -4,6 +4,7 @@ from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.easter_eggs import wc_slot
 from services.competitions import get_pool_competition_ids
+from services.espn_api import fetch_finals_complete
 from routes.scores import build_standings_view
 
 pools_bp = Blueprint("pools", __name__)
@@ -95,20 +96,26 @@ def _inherited_scoring_config(sb, competition_ids):
     return None
 
 
-def _competition_complete(sb, comp_id):
-    """A competition is complete once its champion is decided — a game recorded
-    at the terminal 'final' stage. Round-based comps (NBA/NHL) carry no 'final'
-    stage, so they can't be auto-detected yet and are treated as ongoing."""
-    comp = sb.table("competitions").select("stages").eq("id", comp_id).execute().data
-    if not comp:
-        return False
-    stage_keys = {s.get("key") for s in (comp[0].get("stages") or [])}
-    if "final" not in stage_keys:
-        return False
-    finals = sb.table("game_results").select("id").eq(
-        "competition_id", comp_id
-    ).eq("stage", "final").limit(1).execute().data
-    return bool(finals)
+def _competition_complete(sb, comp):
+    """Whether a competition has crowned its champion.
+
+    Stage-based comps (e.g. World Cup): a game recorded at the terminal 'final'
+    stage. Round-based comps (NBA/NHL): the championship best-of-7 is won, read
+    live from ESPN. Detection is cached by flipping competitions.status to
+    'complete' so it survives the finals rolling off ESPN's current slate.
+    """
+    if comp.get("status") == "complete":
+        return True
+    stage_keys = {s.get("key") for s in (comp.get("stages") or [])}
+    if "final" in stage_keys:
+        done = bool(sb.table("game_results").select("id").eq(
+            "competition_id", comp["id"]
+        ).eq("stage", "final").limit(1).execute().data)
+    else:
+        done = fetch_finals_complete(comp)
+    if done:
+        sb.table("competitions").update({"status": "complete"}).eq("id", comp["id"]).execute()
+    return done
 
 
 def _pool_phase(sb, pool):
@@ -121,7 +128,10 @@ def _pool_phase(sb, pool):
     if pool.get("draft_status") != "complete":
         return "upcoming"
     comp_ids = get_pool_competition_ids(sb, pool["id"])
-    if comp_ids and all(_competition_complete(sb, cid) for cid in comp_ids):
+    if not comp_ids:
+        return "active"
+    comps = sb.table("competitions").select("*").in_("id", comp_ids).execute().data
+    if comps and all(_competition_complete(sb, c) for c in comps):
         return "past"
     return "active"
 

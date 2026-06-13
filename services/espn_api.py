@@ -430,6 +430,40 @@ def fetch_group_winners(competition):
     return winners
 
 
+def fetch_finals_complete(competition):
+    """True once a round-based league's championship series is decided — the NBA
+    Finals / Stanley Cup Final (a best-of-7) has been won.
+
+    Reads the live scoreboard and looks for the championship series, identified
+    by a "...Final(s)" note headline that is NOT a conference final. Returns True
+    when ESPN marks that series completed or a team has reached 4 series wins.
+    False on any error or when the finals aren't on the current slate.
+    """
+    sport, slug = competition.get("espn_sport"), competition.get("espn_slug")
+    if not sport or not slug:
+        return False
+    url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/scoreboard"
+    try:
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return False
+    for ev in data.get("events", []):
+        comp0 = (ev.get("competitions") or [{}])[0]
+        headline = " ".join(n.get("headline", "") for n in (comp0.get("notes") or [])).lower()
+        if "final" not in headline or "conference" in headline:
+            continue
+        series = comp0.get("series") or {}
+        if series.get("type") != "playoff":
+            continue
+        if series.get("completed") or any(
+            (c.get("wins") or 0) >= 4 for c in series.get("competitors", [])
+        ):
+            return True
+    return False
+
+
 def fetch_nhl_standings(n=16):
     """Fetch current NHL season standings and return only clinched playoff teams."""
     url = "https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings"

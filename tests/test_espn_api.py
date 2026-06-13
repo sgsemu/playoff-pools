@@ -152,6 +152,47 @@ def test_fetch_group_winners_returns_rank1_once_group_complete():
     assert winners == {203, 202}
 
 
+def _finals_event(headline, summary, wins, completed):
+    return {"competitions": [{
+        "notes": [{"headline": headline}],
+        "series": {"type": "playoff", "summary": summary, "completed": completed,
+                   "competitors": [{"id": "1", "wins": wins[0]}, {"id": "2", "wins": wins[1]}]},
+    }]}
+
+
+def _finals_payload(*events):
+    return {"events": list(events)}
+
+
+def _call_finals(payload):
+    from services.espn_api import fetch_finals_complete
+    with patch("services.espn_api.requests.get") as g:
+        g.return_value = MagicMock(json=lambda: payload, raise_for_status=lambda: None)
+        return fetch_finals_complete({"espn_sport": "basketball", "espn_slug": "nba"})
+
+
+def test_fetch_finals_complete_false_when_series_in_progress():
+    assert _call_finals(_finals_payload(
+        _finals_event("NBA Finals - Game 5", "NY leads series 3-1", (3, 1), False))) is False
+
+
+def test_fetch_finals_complete_true_when_team_reaches_four():
+    assert _call_finals(_finals_payload(
+        _finals_event("NBA Finals - Game 6", "NY wins series 4-2", (4, 2), True))) is True
+
+
+def test_fetch_finals_complete_true_on_wins_even_if_completed_flag_missing():
+    ev = _finals_event("Stanley Cup Final - Game 7", "CAR wins 4-3", (4, 3), None)
+    ev["competitions"][0]["series"].pop("completed")
+    assert _call_finals(_finals_payload(ev)) is True
+
+
+def test_fetch_finals_complete_ignores_completed_conference_finals():
+    # A completed Conference Finals series must NOT count as the championship.
+    assert _call_finals(_finals_payload(
+        _finals_event("Western Conference Finals - Game 6", "NY wins 4-2", (4, 2), True))) is False
+
+
 def test_fetch_calendar_games_iterates_competitions_and_tags_league():
     payloads = {
         ("basketball", "nba"): {"events": []},
