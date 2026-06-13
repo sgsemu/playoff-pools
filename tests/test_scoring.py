@@ -84,3 +84,27 @@ def test_stage_weighted_no_bonus_when_not_group_winner():
     team_results = {203: [("group", "win")]}
     scores = calculate_stage_weighted_scores(_WC_STAGES, team_results, {"m1": [203]}, group_winners=set())
     assert scores["m1"] == 3
+
+
+def test_stage_points_for_team():
+    from services.scoring import stage_points_for_team
+    assert stage_points_for_team(_WC_STAGES, [("group", "draw")]) == 1
+    assert stage_points_for_team(_WC_STAGES, [("group", "win")]) == 3
+    assert stage_points_for_team(_WC_STAGES, [("group", "loss")]) == 0
+    # win + draw + R32 win + group-winner bonus = 3 + 1 + 3 + 2 = 9
+    assert stage_points_for_team(
+        _WC_STAGES, [("group", "win"), ("group", "draw"), ("r32", "win")],
+        is_group_winner=True) == 9
+    assert stage_points_for_team(_WC_STAGES, []) == 0
+
+
+def test_stage_weighted_scores_equal_sum_of_per_team_points():
+    # The member total must equal the sum of its teams' per-team points.
+    from services.scoring import stage_points_for_team
+    team_results = {203: [("group", "win"), ("group", "draw")], 207: [("group", "win")]}
+    member_teams = {"m1": [203, 207]}
+    gw = {203}
+    total = calculate_stage_weighted_scores(_WC_STAGES, team_results, member_teams, gw)["m1"]
+    per_team = sum(stage_points_for_team(_WC_STAGES, team_results.get(t, []), t in gw)
+                   for t in member_teams["m1"])
+    assert total == per_team == (3 + 1 + 2) + 3

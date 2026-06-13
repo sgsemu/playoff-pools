@@ -92,18 +92,30 @@ def calculate_stage_weighted_scores(stages, team_results, member_teams, group_wi
     member_teams: {member_id: [team_ext_id, ...]}.
     group_winners: set of team_ext_ids that finished 1st in their group.
     """
-    by_key = {s["key"]: s for s in stages}
     scores = {}
     for member_id, teams in member_teams.items():
-        total = 0
-        for team in teams:
-            for stage_key, outcome in team_results.get(team, []):
-                s = by_key.get(stage_key, {})
-                if outcome == "win":
-                    total += s.get("win_points", 0)
-                elif outcome == "draw":
-                    total += s.get("draw_points", 0)
-            if team in group_winners:
-                total += by_key.get("group", {}).get("group_winner_bonus", 0)
-        scores[member_id] = total
+        scores[member_id] = sum(
+            stage_points_for_team(stages, team_results.get(team, []), team in group_winners)
+            for team in teams
+        )
     return scores
+
+
+def stage_points_for_team(stages, results, is_group_winner=False):
+    """Points a single team earned under stage-weighted scoring.
+
+    stages: list of {key, win_points, [draw_points], [group_winner_bonus]}.
+    results: list of (stage_key, "win"|"draw"|"loss").
+    Adds the group-winner bonus when the team finished 1st in its group.
+    """
+    by_key = {s["key"]: s for s in stages}
+    total = 0
+    for stage_key, outcome in results:
+        s = by_key.get(stage_key, {})
+        if outcome == "win":
+            total += s.get("win_points", 0)
+        elif outcome == "draw":
+            total += s.get("draw_points", 0)
+    if is_group_winner:
+        total += by_key.get("group", {}).get("group_winner_bonus", 0)
+    return total

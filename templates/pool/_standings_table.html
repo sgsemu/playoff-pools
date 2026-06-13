@@ -16,7 +16,7 @@
                     <div class="member-team-row" data-league="{{ t.league }}" data-abbr="{{ t.abbreviation }}" style="border-left-color: #{{ t.color }};">
                         <span class="team-league-badge {{ t.league }}">{{ t.league | upper }}</span>
                         <span class="team-detail-name">{{ t.abbreviation }} {{ t.name }}</span>
-                        <span class="team-detail-wins">{{ t.wins }}W</span>
+                        <span class="team-detail-wins">{{ t.points }} pts</span>
                     </div>
                     {% endfor %}
                     {% if not member_teams.get(s.member_id) %}

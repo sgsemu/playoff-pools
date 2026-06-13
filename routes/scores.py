@@ -3,7 +3,7 @@ import datetime
 from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
-from services.scoring import calculate_team_scores, calculate_salary_cap_scores
+from services.scoring import calculate_team_scores, calculate_salary_cap_scores, stage_points_for_team
 from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, fetch_calendar_games, today_et, fetch_group_winners
 from services.quotes import quote_of_the_day
 from services.team_colors import team_color
@@ -219,6 +219,11 @@ def build_standings_view(pool_id):
         ).execute().data:
             names[u["id"]] = u.get("display_name") or "?"
 
+    pool = sb.table("pools").select("*").eq("id", pool_id).execute().data
+    pool = pool[0] if pool else {}
+    scoring = pool.get("scoring_config") or {}
+    stage_weighted = scoring.get("type") == "stage_weighted"
+
     db_standings = {
         s["member_id"]: s
         for s in sb.table("pool_standings").select("member_id,total_points").eq(
@@ -226,13 +231,36 @@ def build_standings_view(pool_id):
         ).execute().data
     }
 
+    # Per-team raw wins (legacy) plus per-team stage results, so each team can
+    # show the points it earned (draw 1, group win 3, knockout 3/4/5) rather
+    # than a bare win count. Keyed by (competition_id, ext_id).
     all_games = sb.table("game_results").select("*").execute().data
     team_wins = {}
+    team_results = {}
     for g in all_games:
         cid = g.get("competition_id")
-        winner_ext = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
-        if g["home_score"] != g["away_score"]:
-            team_wins[(cid, winner_ext)] = team_wins.get((cid, winner_ext), 0) + 1
+        home, away = g["home_team_id"], g["away_team_id"]
+        stage = g.get("stage")
+        if g["home_score"] == g["away_score"]:
+            team_results.setdefault((cid, home), []).append((stage, "draw"))
+            team_results.setdefault((cid, away), []).append((stage, "draw"))
+        else:
+            winner = home if g["home_score"] > g["away_score"] else away
+            loser = away if winner == home else home
+            team_wins[(cid, winner)] = team_wins.get((cid, winner), 0) + 1
+            team_results.setdefault((cid, winner), []).append((stage, "win"))
+            team_results.setdefault((cid, loser), []).append((stage, "loss"))
+
+    stages, group_winners = [], set()
+    if stage_weighted:
+        from services.competitions import get_pool_competition_ids
+        comp_ids = get_pool_competition_ids(sb, pool_id)
+        comps = sb.table("competitions").select("*").in_("id", comp_ids).execute().data if comp_ids else []
+        comp = comps[0] if comps else {}
+        stages = comp.get("stages", [])
+        group_winners = fetch_group_winners(comp) if comp else set()
+
+    ppw = scoring.get("points_per_win", 1) if scoring.get("type") in ("per_win", "combo") else 1
 
     picks = sb.table("draft_picks").select("*").eq(
         "pool_id", pool_id
@@ -244,11 +272,18 @@ def build_standings_view(pool_id):
         t = team_lookup.get(p.get("team_ref"))
         if not t:
             continue
+        key = (t["competition_id"], t["ext_id"])
+        wins = team_wins.get(key, 0)
+        if stage_weighted:
+            points = stage_points_for_team(stages, team_results.get(key, []), t["ext_id"] in group_winners)
+        else:
+            points = wins * ppw
         member_teams.setdefault(p["member_id"], []).append({
             "league": t.get("league", ""),
             "abbreviation": t["abbreviation"],
             "name": t["name"],
-            "wins": team_wins.get((t["competition_id"], t["ext_id"]), 0),
+            "wins": wins,
+            "points": points,
             "color": (t.get("color") or "").lstrip("#") or team_color(t.get("league", ""), t["ext_id"]),
         })
 
