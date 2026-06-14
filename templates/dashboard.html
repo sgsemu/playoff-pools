@@ -12,12 +12,12 @@
     <div class="pool-list">
         {% for pool in upcoming_pools %}
         <a href="/pool/{{ pool.id }}" class="pool-card">
-            <div class="pool-card-type">{{ pool.type | replace('_', ' ') | title }}</div>
-            <h3>{{ pool.name }}</h3>
-            <div class="pool-card-meta">
+            <div class="pool-card-type">
+                {{ pool.type | replace('_', ' ') | title }}
                 <span class="badge badge-{{ pool.draft_status }}">{{ pool.draft_status }}</span>
-                <span>{{ pool.league | upper }}</span>
             </div>
+            <h3>{{ pool.name }}</h3>
+            <div class="pool-card-meta"><span>{{ pool.leagues_label }}</span></div>
         </a>
         {% endfor %}
     </div>
@@ -28,12 +28,12 @@
     <div class="pool-list">
         {% for pool in active_pools %}
         <a href="/pool/{{ pool.id }}" class="pool-card">
-            <div class="pool-card-type">{{ pool.type | replace('_', ' ') | title }}</div>
-            <h3>{{ pool.name }}</h3>
-            <div class="pool-card-meta">
+            <div class="pool-card-type">
+                {{ pool.type | replace('_', ' ') | title }}
                 <span class="badge badge-{{ pool.draft_status }}">{{ pool.draft_status }}</span>
-                <span>{{ pool.league | upper }}</span>
             </div>
+            <h3>{{ pool.name }}</h3>
+            <div class="pool-card-meta"><span>{{ pool.leagues_label }}</span></div>
         </a>
         {% endfor %}
     </div>

@@ -58,6 +58,31 @@ def _phase_sb(comps, finals_game=False):
     return sb
 
 
+@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-nba", "c-nhl"])
+def test_pool_leagues_label_combines_nba_and_nhl():
+    def table(name):
+        t = MagicMock()
+        if name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = [
+                {"league": "nhl"}, {"league": "nba"}]
+        return t
+    sb = MagicMock(); sb.table.side_effect = table
+    from routes.pools import _pool_leagues_label
+    assert _pool_leagues_label(sb, {"id": "p", "league": "nba"}) == "NBA and NHL"
+
+
+@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-wc"])
+def test_pool_leagues_label_world_cup_is_soccer():
+    def table(name):
+        t = MagicMock()
+        if name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = [{"league": "world_cup"}]
+        return t
+    sb = MagicMock(); sb.table.side_effect = table
+    from routes.pools import _pool_leagues_label
+    assert _pool_leagues_label(sb, {"id": "p", "league": "multi"}) == "Soccer"
+
+
 def test_pool_phase_upcoming_when_draft_not_complete():
     from routes.pools import _pool_phase
     for status in ("pending", "active", "auction"):

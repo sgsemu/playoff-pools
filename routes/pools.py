@@ -118,6 +118,27 @@ def _competition_complete(sb, comp):
     return done
 
 
+LEAGUE_LABELS = {"nba": "NBA", "nhl": "NHL", "world_cup": "Soccer"}
+
+
+def _pool_leagues_label(sb, pool):
+    """Human label for the leagues a pool actually drafts from, from its
+    competitions. The denormalized pool.league is unreliable (e.g. 'multi' for
+    a single-soccer WC pool, 'nba' for a combined NBA+NHL pool)."""
+    comp_ids = get_pool_competition_ids(sb, pool["id"])
+    labels = []
+    if comp_ids:
+        comps = sb.table("competitions").select("league").in_("id", comp_ids).execute().data
+        for c in comps:
+            lg = c.get("league") or ""
+            lbl = LEAGUE_LABELS.get(lg, lg.upper())
+            if lbl and lbl not in labels:
+                labels.append(lbl)
+    if not labels:
+        return (pool.get("league") or "").upper()
+    return " and ".join(sorted(labels))
+
+
 def _pool_phase(sb, pool):
     """Bucket a pool into 'upcoming' | 'active' | 'past'.
 
@@ -152,6 +173,7 @@ def dashboard():
 
     buckets = {"upcoming": [], "active": [], "past": []}
     for p in pools:
+        p["leagues_label"] = _pool_leagues_label(sb, p)
         buckets[_pool_phase(sb, p)].append(p)
 
     return render_template("dashboard.html",
