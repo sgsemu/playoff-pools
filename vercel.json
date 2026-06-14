@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "regions": ["pdx1"],
   "builds": [
     { "src": "api/index.py", "use": "@vercel/python" },
     { "src": "api/cron/sync_games.py", "use": "@vercel/python" },
