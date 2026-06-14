@@ -1,0 +1,4 @@
+# Dev/test-only deps. Prod (Vercel) installs requirements.txt, which must stay
+# lean to keep serverless cold starts fast — don't add test tools there.
+-r requirements.txt
+pytest==8.3.5
