@@ -231,10 +231,19 @@ def build_standings_view(pool_id):
         ).execute().data
     }
 
+    # Only this pool's competitions' games matter; scope the query so it doesn't
+    # scan every game across every league as the table grows. comp_ids is reused
+    # by the stage-weighted branch below.
+    from services.competitions import get_pool_competition_ids
+    comp_ids = get_pool_competition_ids(sb, pool_id)
+
     # Per-team raw wins (legacy) plus per-team stage results, so each team can
     # show the points it earned (draw 1, group win 3, knockout 3/4/5) rather
     # than a bare win count. Keyed by (competition_id, ext_id).
-    all_games = sb.table("game_results").select("*").execute().data
+    games_q = sb.table("game_results").select("*")
+    if comp_ids:
+        games_q = games_q.in_("competition_id", comp_ids)
+    all_games = games_q.execute().data
     team_wins = {}
     team_results = {}
     for g in all_games:
@@ -253,8 +262,6 @@ def build_standings_view(pool_id):
 
     stages, group_winners = [], set()
     if stage_weighted:
-        from services.competitions import get_pool_competition_ids
-        comp_ids = get_pool_competition_ids(sb, pool_id)
         comps = sb.table("competitions").select("*").in_("id", comp_ids).execute().data if comp_ids else []
         comp = comps[0] if comps else {}
         stages = comp.get("stages", [])

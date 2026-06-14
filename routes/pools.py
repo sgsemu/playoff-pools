@@ -121,26 +121,24 @@ def _competition_complete(sb, comp):
 LEAGUE_LABELS = {"nba": "NBA", "nhl": "NHL", "world_cup": "Soccer"}
 
 
-def _pool_leagues_label(sb, pool):
-    """Human label for the leagues a pool actually drafts from, from its
-    competitions. The denormalized pool.league is unreliable (e.g. 'multi' for
-    a single-soccer WC pool, 'nba' for a combined NBA+NHL pool)."""
-    comp_ids = get_pool_competition_ids(sb, pool["id"])
+def _leagues_label(comps, pool):
+    """Human label for the leagues a pool drafts from, from its competition rows.
+    The denormalized pool.league is unreliable (e.g. 'multi' for a single-soccer
+    WC pool, 'nba' for a combined NBA+NHL pool)."""
     labels = []
-    if comp_ids:
-        comps = sb.table("competitions").select("league").in_("id", comp_ids).execute().data
-        for c in comps:
-            lg = c.get("league") or ""
-            lbl = LEAGUE_LABELS.get(lg, lg.upper())
-            if lbl and lbl not in labels:
-                labels.append(lbl)
+    for c in comps:
+        lg = c.get("league") or ""
+        lbl = LEAGUE_LABELS.get(lg, lg.upper())
+        if lbl and lbl not in labels:
+            labels.append(lbl)
     if not labels:
         return (pool.get("league") or "").upper()
     return " and ".join(sorted(labels))
 
 
-def _pool_phase(sb, pool):
-    """Bucket a pool into 'upcoming' | 'active' | 'past'.
+def _pool_phase(sb, pool, comps):
+    """Bucket a pool into 'upcoming' | 'active' | 'past' given its (pre-fetched)
+    competition rows.
 
     upcoming: still being set up or drafted (draft not complete).
     active:   drafted and the tournament is still being played.
@@ -148,11 +146,9 @@ def _pool_phase(sb, pool):
     """
     if pool.get("draft_status") != "complete":
         return "upcoming"
-    comp_ids = get_pool_competition_ids(sb, pool["id"])
-    if not comp_ids:
+    if not comps:
         return "active"
-    comps = sb.table("competitions").select("*").in_("id", comp_ids).execute().data
-    if comps and all(_competition_complete(sb, c) for c in comps):
+    if all(_competition_complete(sb, c) for c in comps):
         return "past"
     return "active"
 
@@ -164,17 +160,33 @@ def dashboard():
     memberships = sb.table("pool_members").select(
         "pool_id, role"
     ).eq("user_id", session["user_id"]).execute().data
+    pool_ids = list({m["pool_id"] for m in memberships})
+    role_by_pool = {m["pool_id"]: m["role"] for m in memberships}
+    if not pool_ids:
+        return render_template("dashboard.html", upcoming_pools=[], active_pools=[], past_pools=[])
 
-    pools = []
-    for m in memberships:
-        pool_data = sb.table("pools").select("*").eq("id", m["pool_id"]).execute().data
-        if pool_data:
-            pools.append(pool_data[0] | {"role": m["role"]})
+    # Batch the whole competition graph: one query for all pools, one for all
+    # their pool_competitions links, one for all referenced competitions. Avoids
+    # the old per-pool N+1 (and the redundant double-fetch of comps per pool).
+    pools = sb.table("pools").select("*").in_("id", pool_ids).execute().data
+    links = sb.table("pool_competitions").select("pool_id, competition_id").in_(
+        "pool_id", pool_ids).execute().data
+    comp_ids_by_pool = {}
+    all_comp_ids = set()
+    for r in links:
+        comp_ids_by_pool.setdefault(r["pool_id"], []).append(r["competition_id"])
+        all_comp_ids.add(r["competition_id"])
+    comp_by_id = {}
+    if all_comp_ids:
+        for c in sb.table("competitions").select("*").in_("id", list(all_comp_ids)).execute().data:
+            comp_by_id[c["id"]] = c
 
     buckets = {"upcoming": [], "active": [], "past": []}
     for p in pools:
-        p["leagues_label"] = _pool_leagues_label(sb, p)
-        buckets[_pool_phase(sb, p)].append(p)
+        p["role"] = role_by_pool.get(p["id"])
+        comps = [comp_by_id[cid] for cid in comp_ids_by_pool.get(p["id"], []) if cid in comp_by_id]
+        p["leagues_label"] = _leagues_label(comps, p)
+        buckets[_pool_phase(sb, p, comps)].append(p)
 
     return render_template("dashboard.html",
         upcoming_pools=buckets["upcoming"],

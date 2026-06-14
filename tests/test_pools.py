@@ -43,14 +43,11 @@ def test_dashboard_loads(mock_sb, authed_client):
     assert b"My Pools" in resp.data
 
 
-def _phase_sb(comps, finals_game=False):
-    """Mock sb where competitions.in_ returns `comps` and the game_results
-    'final' lookup returns a row iff finals_game."""
+def _final_sb(finals_game=False):
+    """Mock sb where the game_results 'final' lookup returns a row iff finals_game."""
     def table(name):
         t = MagicMock()
-        if name == "competitions":
-            t.select.return_value.in_.return_value.execute.return_value.data = comps
-        elif name == "game_results":
+        if name == "game_results":
             t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = (
                 [{"id": "g-final"}] if finals_game else [])
         return t
@@ -58,75 +55,61 @@ def _phase_sb(comps, finals_game=False):
     return sb
 
 
-@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-nba", "c-nhl"])
-def test_pool_leagues_label_combines_nba_and_nhl():
-    def table(name):
-        t = MagicMock()
-        if name == "competitions":
-            t.select.return_value.in_.return_value.execute.return_value.data = [
-                {"league": "nhl"}, {"league": "nba"}]
-        return t
-    sb = MagicMock(); sb.table.side_effect = table
-    from routes.pools import _pool_leagues_label
-    assert _pool_leagues_label(sb, {"id": "p", "league": "nba"}) == "NBA and NHL"
+def test_leagues_label_combines_nba_and_nhl():
+    from routes.pools import _leagues_label
+    assert _leagues_label([{"league": "nhl"}, {"league": "nba"}], {"league": "nba"}) == "NBA and NHL"
 
 
-@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-wc"])
-def test_pool_leagues_label_world_cup_is_soccer():
-    def table(name):
-        t = MagicMock()
-        if name == "competitions":
-            t.select.return_value.in_.return_value.execute.return_value.data = [{"league": "world_cup"}]
-        return t
-    sb = MagicMock(); sb.table.side_effect = table
-    from routes.pools import _pool_leagues_label
-    assert _pool_leagues_label(sb, {"id": "p", "league": "multi"}) == "Soccer"
+def test_leagues_label_world_cup_is_soccer():
+    from routes.pools import _leagues_label
+    assert _leagues_label([{"league": "world_cup"}], {"league": "multi"}) == "Soccer"
+
+
+def test_leagues_label_falls_back_to_pool_league_when_no_comps():
+    from routes.pools import _leagues_label
+    assert _leagues_label([], {"league": "nba"}) == "NBA"
 
 
 def test_pool_phase_upcoming_when_draft_not_complete():
     from routes.pools import _pool_phase
     for status in ("pending", "active", "auction"):
-        assert _pool_phase(MagicMock(), {"id": "p", "draft_status": status}) == "upcoming"
+        assert _pool_phase(MagicMock(), {"id": "p", "draft_status": status}, []) == "upcoming"
 
 
-@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-wc"])
+def test_pool_phase_active_when_no_competitions():
+    from routes.pools import _pool_phase
+    assert _pool_phase(MagicMock(), {"id": "p", "draft_status": "complete"}, []) == "active"
+
+
 def test_pool_phase_active_when_drafted_and_no_final_yet():
-    # Stage-based comp with a 'final' stage but no final game recorded yet.
-    sb = _phase_sb([{"id": "c-wc", "stages": [{"key": "group"}, {"key": "final"}]}], finals_game=False)
+    comps = [{"id": "c-wc", "stages": [{"key": "group"}, {"key": "final"}]}]
     from routes.pools import _pool_phase
-    assert _pool_phase(sb, {"id": "p", "draft_status": "complete"}) == "active"
+    assert _pool_phase(_final_sb(finals_game=False), {"id": "p", "draft_status": "complete"}, comps) == "active"
 
 
-@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-wc"])
 def test_pool_phase_past_when_final_recorded():
-    sb = _phase_sb([{"id": "c-wc", "stages": [{"key": "group"}, {"key": "final"}]}], finals_game=True)
+    comps = [{"id": "c-wc", "stages": [{"key": "group"}, {"key": "final"}]}]
     from routes.pools import _pool_phase
-    assert _pool_phase(sb, {"id": "p", "draft_status": "complete"}) == "past"
+    assert _pool_phase(_final_sb(finals_game=True), {"id": "p", "draft_status": "complete"}, comps) == "past"
 
 
 @patch("routes.pools.fetch_finals_complete", lambda comp: False)
-@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-nba"])
 def test_pool_phase_active_when_round_based_finals_not_done():
-    # Round-based comp (no 'final' stage); ESPN says the finals aren't won yet.
-    sb = _phase_sb([{"id": "c-nba", "stages": []}])
     from routes.pools import _pool_phase
-    assert _pool_phase(sb, {"id": "p", "draft_status": "complete"}) == "active"
+    assert _pool_phase(MagicMock(), {"id": "p", "draft_status": "complete"}, [{"id": "c-nba", "stages": []}]) == "active"
 
 
 @patch("routes.pools.fetch_finals_complete", lambda comp: True)
-@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-nba"])
 def test_pool_phase_past_when_round_based_finals_won():
-    sb = _phase_sb([{"id": "c-nba", "stages": []}])
     from routes.pools import _pool_phase
-    assert _pool_phase(sb, {"id": "p", "draft_status": "complete"}) == "past"
+    assert _pool_phase(MagicMock(), {"id": "p", "draft_status": "complete"}, [{"id": "c-nba", "stages": []}]) == "past"
 
 
-@patch("routes.pools.get_pool_competition_ids", lambda sb, pid: ["c-nba"])
 def test_pool_phase_past_when_competition_status_cached_complete():
     # Once flipped to status=complete, no ESPN/game lookup is needed.
-    sb = _phase_sb([{"id": "c-nba", "status": "complete", "stages": []}])
     from routes.pools import _pool_phase
-    assert _pool_phase(sb, {"id": "p", "draft_status": "complete"}) == "past"
+    assert _pool_phase(MagicMock(), {"id": "p", "draft_status": "complete"},
+                       [{"id": "c", "status": "complete", "stages": []}]) == "past"
 
 
 @patch("routes.pools.get_service_client")

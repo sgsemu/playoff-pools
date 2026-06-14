@@ -1,6 +1,23 @@
+import time
 import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+
+# Short in-process TTL cache for slow-changing ESPN reads (group winners, finals
+# completion). These were being fetched synchronously on every page render;
+# group standings / finals state change at most a few times a day, so a few
+# minutes of staleness is fine and keeps ESPN off the hot path on warm workers.
+_ESPN_CACHE = {}
+_ESPN_TTL = 300  # seconds
+
+
+def _espn_cached(key, fn):
+    hit = _ESPN_CACHE.get(key)
+    if hit is not None and hit[1] > time.time():
+        return hit[0]
+    val = fn()
+    _ESPN_CACHE[key] = (val, time.time() + _ESPN_TTL)
+    return val
 
 ESPN_NBA_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 ESPN_NHL_BASE = "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl"
@@ -386,6 +403,12 @@ def fetch_competition_results(competition, dates=None):
 
 
 def fetch_group_winners(competition):
+    """Group winners (ext_ids ranked 1st in a *completed* group). Cached ~5 min."""
+    key = ("group_winners", competition.get("id") or competition.get("espn_slug"))
+    return _espn_cached(key, lambda: _fetch_group_winners(competition))
+
+
+def _fetch_group_winners(competition):
     """Return the set of ext_ids that are ranked 1st in their group. Empty set
     before the group stage finishes or if standings are unavailable."""
     url = (f"https://site.api.espn.com/apis/v2/sports/"
@@ -431,6 +454,12 @@ def fetch_group_winners(competition):
 
 
 def fetch_finals_complete(competition):
+    """Whether the championship series is decided (cached ~5 min)."""
+    key = ("finals_complete", competition.get("id") or competition.get("espn_slug"))
+    return _espn_cached(key, lambda: _fetch_finals_complete(competition))
+
+
+def _fetch_finals_complete(competition):
     """True once a round-based league's championship series is decided — the NBA
     Finals / Stanley Cup Final (a best-of-7) has been won.
 

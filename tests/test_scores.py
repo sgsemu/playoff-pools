@@ -36,6 +36,8 @@ def test_build_standings_view_resolves_roster_via_team_ref(mock_sb):
         elif name == "pool_standings":
             t.select.return_value.eq.return_value.execute.return_value.data = [
                 {"member_id": "m1", "total_points": 0}]
+        elif name == "pool_competitions":
+            t.select.return_value.eq.return_value.execute.return_value.data = []
         elif name == "game_results":
             t.select.return_value.execute.return_value.data = []
         elif name == "draft_picks":
@@ -75,7 +77,7 @@ def test_build_standings_view_shows_stage_points_per_team(mock_sb):
             t.select.return_value.eq.return_value.execute.return_value.data = [
                 {"member_id": "m1", "total_points": 1}]
         elif name == "game_results":
-            t.select.return_value.execute.return_value.data = [
+            t.select.return_value.in_.return_value.execute.return_value.data = [
                 {"competition_id": "c-wc", "home_team_id": 203, "away_team_id": 467,
                  "home_score": 1, "away_score": 1, "stage": "group", "is_draw": True}]
         elif name == "pool_competitions":
