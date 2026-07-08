@@ -3,7 +3,7 @@ import datetime
 from flask import Blueprint, render_template, jsonify, session, redirect, flash
 from routes.auth import login_required
 from services.supabase_client import get_service_client
-from services.scoring import calculate_team_scores, calculate_salary_cap_scores, stage_points_for_team
+from services.scoring import calculate_team_scores, calculate_salary_cap_scores, stage_points_for_team, match_outcomes
 from services.espn_api import fetch_upcoming_games, fetch_scoreboard, fetch_nhl_scoreboard, fetch_live_games, fetch_calendar_games, today_et, fetch_group_winners
 from services.quotes import quote_of_the_day
 from services.team_colors import team_color
@@ -248,17 +248,11 @@ def build_standings_view(pool_id):
     team_results = {}
     for g in all_games:
         cid = g.get("competition_id")
-        home, away = g["home_team_id"], g["away_team_id"]
         stage = g.get("stage")
-        if g["home_score"] == g["away_score"]:
-            team_results.setdefault((cid, home), []).append((stage, "draw"))
-            team_results.setdefault((cid, away), []).append((stage, "draw"))
-        else:
-            winner = home if g["home_score"] > g["away_score"] else away
-            loser = away if winner == home else home
-            team_wins[(cid, winner)] = team_wins.get((cid, winner), 0) + 1
-            team_results.setdefault((cid, winner), []).append((stage, "win"))
-            team_results.setdefault((cid, loser), []).append((stage, "loss"))
+        for team_id, outcome in match_outcomes(g):
+            team_results.setdefault((cid, team_id), []).append((stage, outcome))
+            if outcome == "win":
+                team_wins[(cid, team_id)] = team_wins.get((cid, team_id), 0) + 1
 
     stages, group_winners = [], set()
     if stage_weighted:
@@ -341,14 +335,8 @@ def recalculate_standings(pool_id):
         team_results = {}
         for g in games:
             stage = g.get("stage")
-            if g.get("is_draw"):
-                team_results.setdefault(g["home_team_id"], []).append((stage, "draw"))
-                team_results.setdefault(g["away_team_id"], []).append((stage, "draw"))
-            else:
-                winner = g["home_team_id"] if g["home_score"] > g["away_score"] else g["away_team_id"]
-                loser = g["away_team_id"] if winner == g["home_team_id"] else g["home_team_id"]
-                team_results.setdefault(winner, []).append((stage, "win"))
-                team_results.setdefault(loser, []).append((stage, "loss"))
+            for team_id, outcome in match_outcomes(g):
+                team_results.setdefault(team_id, []).append((stage, outcome))
 
         group_winners = fetch_group_winners(comp) if comp else set()
         scores = calculate_stage_weighted_scores(stages, team_results, member_teams, group_winners)

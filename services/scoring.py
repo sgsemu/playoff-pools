@@ -1,3 +1,22 @@
+def match_outcomes(game):
+    """Per-team (team_id, "win"|"draw"|"loss") outcomes for one game_results row.
+
+    A completed match with is_draw is a draw for both sides. Otherwise the
+    winner is taken from winner_team_id when present — this is required for
+    penalty-shootout / extra-time results, where the stored home/away scores
+    are the (tied) regulation score and can't reveal the winner. Falls back to
+    score comparison for ordinary decisive games with no winner recorded.
+    """
+    home, away = game["home_team_id"], game["away_team_id"]
+    if game.get("is_draw"):
+        return [(home, "draw"), (away, "draw")]
+    winner = game.get("winner_team_id")
+    if winner is None:
+        winner = home if game["home_score"] > game["away_score"] else away
+    loser = away if winner == home else home
+    return [(winner, "win"), (loser, "loss")]
+
+
 def calculate_team_scores(config, team_wins, member_teams, series_wins):
     """
     Calculate scores for draft/auction pool members based on their teams' performance.

@@ -44,6 +44,7 @@ def sync_competition_results(sb, competition):
             "away_team_id": game["away_team_id"],
             "home_score": game["home_score"],
             "away_score": game["away_score"],
+            "winner_team_id": game.get("winner_team_id"),
             "stage": game["stage"],
             "is_draw": game["is_draw"],
             "league": competition["league"],   # legacy column (NBA/NHL scoring)

@@ -1,4 +1,39 @@
-from services.scoring import calculate_team_scores, calculate_salary_cap_scores, calculate_stage_weighted_scores
+from services.scoring import (
+    calculate_team_scores,
+    calculate_salary_cap_scores,
+    calculate_stage_weighted_scores,
+    match_outcomes,
+)
+
+
+def test_match_outcomes_regular_win():
+    # Normal decisive game: higher score wins, no winner_team_id needed.
+    game = {"home_team_id": 10, "away_team_id": 20,
+            "home_score": 2, "away_score": 1, "is_draw": False}
+    assert set(match_outcomes(game)) == {(10, "win"), (20, "loss")}
+
+
+def test_match_outcomes_group_draw():
+    game = {"home_team_id": 10, "away_team_id": 20,
+            "home_score": 1, "away_score": 1, "is_draw": True}
+    assert set(match_outcomes(game)) == {(10, "draw"), (20, "draw")}
+
+
+def test_match_outcomes_shootout_home_wins():
+    # Knockout shootout: regulation tied 0-0, home won on penalties.
+    # is_draw is False and the winner must come from winner_team_id,
+    # NOT from the (tied) score comparison.
+    game = {"home_team_id": 475, "away_team_id": 208,
+            "home_score": 0, "away_score": 0, "is_draw": False,
+            "winner_team_id": 475}
+    assert set(match_outcomes(game)) == {(475, "win"), (208, "loss")}
+
+
+def test_match_outcomes_shootout_away_wins():
+    game = {"home_team_id": 628, "away_team_id": 2620,
+            "home_score": 1, "away_score": 1, "is_draw": False,
+            "winner_team_id": 2620}
+    assert set(match_outcomes(game)) == {(2620, "win"), (628, "loss")}
 
 
 def test_per_win_scoring():
