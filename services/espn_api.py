@@ -380,11 +380,21 @@ def fetch_competition_results(competition, dates=None):
         # (knockouts always resolve a winner via ET/penalties).
         no_winner = not home.get("winner") and not away.get("winner")
         is_draw = completed and no_winner and home_score == away_score
+        # Capture the declared winner explicitly. In a penalty-shootout / ET
+        # result the stored scores are the tied regulation score, so the winner
+        # can't be recovered downstream by comparing them — persist it here.
+        winner_team_id = None
+        if not is_draw:
+            if home.get("winner"):
+                winner_team_id = int(home["team"]["id"])
+            elif away.get("winner"):
+                winner_team_id = int(away["team"]["id"])
         kickoff_short, kickoff_full = _format_kickoff(ev.get("date"))
         out.append({
             "espn_game_id": ev["id"],
             "home_team_id": int(home["team"]["id"]),
             "away_team_id": int(away["team"]["id"]),
+            "winner_team_id": winner_team_id,
             "home_team_abbr": home["team"].get("abbreviation", "?"),
             "home_team_name": home["team"].get("displayName", "?"),
             "away_team_abbr": away["team"].get("abbreviation", "?"),
