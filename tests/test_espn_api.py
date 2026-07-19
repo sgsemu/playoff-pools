@@ -73,6 +73,9 @@ def test_resolve_stage_maps_group_slug():
     from services.espn_api import resolve_stage
     assert resolve_stage("world_cup", "group-stage") == "group"
     assert resolve_stage("world_cup", "round-of-16") == "r16"
+    # ESPN labels the third-place playoff '3rd-place-match', not 'third-place'.
+    assert resolve_stage("world_cup", "3rd-place-match") == "third_place"
+    assert resolve_stage("world_cup", "final") == "final"
     assert resolve_stage("world_cup", "totally-unknown") is None
 
 

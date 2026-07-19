@@ -325,7 +325,7 @@ STAGE_SLUGS = {
         "round-of-16": "r16",
         "quarterfinals": "qf",
         "semifinals": "sf",
-        "third-place": "third_place",
+        "3rd-place-match": "third_place",
         "final": "final",
     },
 }
