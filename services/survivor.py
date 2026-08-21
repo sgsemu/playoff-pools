@@ -86,3 +86,20 @@ def resolve_week(entries, picks_by_entry, games_by_espn_id, week, mercy_after_we
         else:
             out[eid] = {"result": g["result"], "status": "eliminated", "eliminated_week": week}
     return out
+
+
+def _in_window(week, win):
+    lo, hi = win["weeks"]
+    return lo <= week <= hi
+
+
+def buyback_option(week, config):
+    """What buyback is available to re-enter FOR `week`. None outside the
+    windows or once past the final week."""
+    reg = config.get("regular_buyback", {})
+    sup = config.get("super_buyback", {})
+    if reg and _in_window(week, reg):
+        return {"kind": "regular", "fee": reg.get("fee"), "limit": reg.get("limit")}
+    if sup and _in_window(week, sup):
+        return {"kind": "super", "fee": sup.get("fee"), "limit": sup.get("limit")}
+    return {"kind": None, "fee": None, "limit": None}

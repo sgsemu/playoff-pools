@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
-from services.survivor import pick_lock_at, resolve_week
+from services.survivor import pick_lock_at, resolve_week, buyback_option
 
 ET = ZoneInfo("America/New_York")
 
@@ -101,3 +101,23 @@ def test_resolver_partial_week_defers_no_eliminations():
     # exactly the oscillation bug (mercy could later un-fire once g2 finalizes).
     assert r["e1"]["result"] == "pending"
     assert r["e2"]["result"] == "pending"
+
+
+CFG = {"regular_buyback": {"weeks": [1, 6], "limit": None, "deadline": "sunday_1pm"},
+       "super_buyback": {"weeks": [7, 17], "limit": 1, "fee": 500, "deadline": "friday_2359_et"},
+       "final_week": 18}
+
+
+def test_regular_window_weeks_1_6():
+    assert buyback_option(3, CFG)["kind"] == "regular"
+    assert buyback_option(3, CFG)["limit"] is None
+
+
+def test_super_window_weeks_7_17():
+    o = buyback_option(9, CFG)
+    assert o["kind"] == "super" and o["fee"] == 500 and o["limit"] == 1
+
+
+def test_no_buyback_after_final_week():
+    assert buyback_option(18, CFG)["kind"] is None
+    assert buyback_option(19, CFG)["kind"] is None
