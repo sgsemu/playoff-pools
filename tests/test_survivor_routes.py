@@ -134,9 +134,15 @@ def _base_tables(survivor_config=None):
     return {
         "pools": [{"id": "pool-1", "survivor_config": survivor_config or {}}],
         "pool_members": [{"id": "m1", "pool_id": "pool-1", "user_id": "test-uuid"}],
+        "pool_competitions": [{"pool_id": "pool-1", "competition_id": "c1"}],
         "survivor_entries": [],
         "survivor_picks": [],
         "survivor_buybacks": [],
+        "teams": [
+            {"id": "team-A", "ext_id": "ext-A"},
+            {"id": "team-B", "ext_id": "ext-B"},
+            {"id": "team-other", "ext_id": "ext-other"},
+        ],
     }
 
 
@@ -149,7 +155,8 @@ def test_pick_on_locked_week_returns_409(mock_sb, authed_client):
     tables = _base_tables()
     tables["game_results"] = [
         {"espn_game_id": "g-locked", "competition_id": "c1", "week": 1,
-         "kickoff_at": "2020-01-05T18:00:00+00:00"},
+         "kickoff_at": "2020-01-05T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
     ]
     sb = FakeSb(tables)
     mock_sb.return_value = sb
@@ -170,7 +177,8 @@ def test_pick_on_open_week_returns_200_and_persists(mock_sb, authed_client):
     tables = _base_tables()
     tables["game_results"] = [
         {"espn_game_id": "g-open", "competition_id": "c1", "week": 1,
-         "kickoff_at": "2099-01-04T18:00:00+00:00"},
+         "kickoff_at": "2099-01-04T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
     ]
     sb = FakeSb(tables)
     mock_sb.return_value = sb
@@ -204,3 +212,73 @@ def test_buyback_outside_window_returns_400(mock_sb, authed_client):
     resp = authed_client.post("/pool/pool-1/survivor/buyback", json={"week": 3})
     assert resp.status_code == 400
     assert sb.tables["survivor_buybacks"] == []
+
+
+# ---------------------------------------------------------------------------
+# buyback: active (not eliminated) entry, even during an open window -> 400
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_buyback_by_active_entry_returns_400(mock_sb, authed_client):
+    tables = _base_tables(survivor_config={
+        "regular_buyback": {"weeks": [2, 4], "fee": 100},
+    })
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/buyback", json={"week": 3})
+    assert resp.status_code == 400
+    assert sb.tables["survivor_buybacks"] == []
+
+
+# ---------------------------------------------------------------------------
+# buyback: eliminated entry, open regular window -> 200, row written, entry
+# flips back to active
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_buyback_by_eliminated_entry_returns_200(mock_sb, authed_client):
+    tables = _base_tables(survivor_config={
+        "regular_buyback": {"weeks": [2, 4], "fee": 100},
+    })
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "eliminated",
+         "eliminated_week": 2},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/buyback", json={"week": 3})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+
+    assert len(sb.tables["survivor_buybacks"]) == 1
+    assert sb.tables["survivor_buybacks"][0]["kind"] == "regular"
+    assert sb.tables["survivor_entries"][0]["status"] == "active"
+
+
+# ---------------------------------------------------------------------------
+# pick: team_ref not one of the espn_game_id game's two teams -> 400
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_pick_team_not_in_game_returns_400(mock_sb, authed_client):
+    tables = _base_tables()
+    tables["game_results"] = [
+        {"espn_game_id": "g-open", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2099-01-04T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/pick", json={
+        "week": 1, "team_ref": "team-other", "espn_game_id": "g-open",
+    })
+    assert resp.status_code == 400
+    assert sb.tables["survivor_picks"] == []
+    assert sb.tables["survivor_entries"] == []

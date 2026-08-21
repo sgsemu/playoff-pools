@@ -9,6 +9,7 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, render_template, session
 from routes.auth import login_required
 from services.supabase_client import get_service_client
+from services.competitions import get_pool_competition_ids, get_team
 from services.survivor import ET, is_locked, buyback_option
 from services.survivor_data import (
     get_or_create_entry,
@@ -103,12 +104,24 @@ def submit_survivor_pick(pool_id):
     except (TypeError, ValueError):
         return jsonify({"error": "week must be an integer"}), 400
 
-    games = sb.table("game_results").select("kickoff_at, competition_id").eq(
-        "espn_game_id", espn_game_id
+    comp_ids = get_pool_competition_ids(sb, pool_id)
+    if not comp_ids:
+        return jsonify({"error": "Game not found"}), 400
+    games = sb.table("game_results").select(
+        "kickoff_at, competition_id, home_team_id, away_team_id"
+    ).eq("espn_game_id", espn_game_id).eq("week", week).in_(
+        "competition_id", comp_ids
     ).execute().data
     if not games:
         return jsonify({"error": "Game not found"}), 400
     game = games[0]
+
+    team = get_team(sb, team_ref)
+    if not team or team.get("ext_id") not in (
+        game.get("home_team_id"), game.get("away_team_id")
+    ):
+        return jsonify({"error": "Team is not in that game"}), 400
+
     kickoff_at = _parse_iso(game.get("kickoff_at"))
     if kickoff_at is None:
         return jsonify({"error": "Game has no kickoff time yet"}), 400
@@ -145,12 +158,14 @@ def submit_survivor_buyback(pool_id):
     except (TypeError, ValueError):
         return jsonify({"error": "week must be an integer"}), 400
 
+    entry = get_or_create_entry(sb, pool_id, member["id"])
+    if entry["status"] != "eliminated":
+        return jsonify({"error": "not eliminated"}), 400
+
     config = pool.get("survivor_config") or {}
     option = buyback_option(week, config)
     if not option or not option.get("kind"):
         return jsonify({"error": "No buyback window is open for that week"}), 400
-
-    entry = get_or_create_entry(sb, pool_id, member["id"])
 
     if option["kind"] == "super":
         existing_super = sb.table("survivor_buybacks").select("id").eq(
