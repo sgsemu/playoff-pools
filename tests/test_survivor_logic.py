@@ -79,3 +79,25 @@ def test_resolver_mercy_not_before_week7():
     games = {"g1": _game("g1", 10, 20, winner=20)}
     r = resolve_week(entries, picks, games, week=5)
     assert r["e1"]["status"] == "eliminated"
+
+
+def test_resolver_partial_week_defers_no_eliminations():
+    # week 8: e1's game is final (a loss); e2's game hasn't been played/graded yet
+    # (not present in games_by_espn_id). The whole week must defer -- nobody is
+    # eliminated and mercy must NOT fire early just because e1's lone final game
+    # produced zero survivors so far.
+    entries = [{"id": "e1", "status": "active", "eliminated_week": None},
+               {"id": "e2", "status": "active", "eliminated_week": None}]
+    picks = {"e1": {"week": 8, "team_ext_id": 10, "espn_game_id": "g1"},
+              "e2": {"week": 8, "team_ext_id": 30, "espn_game_id": "g2"}}
+    games = {"g1": _game("g1", 10, 20, winner=20)}  # g2 missing -> still pending
+    r = resolve_week(entries, picks, games, week=8)
+    assert r["e1"]["status"] == "active"
+    assert r["e2"]["status"] == "active"
+    assert all(v["eliminated_week"] is None for v in r.values())
+    # Deferral, not a mercy save: e1's already-final loss must NOT be graded
+    # as "loss" (which is what mercy would produce). If e1 shows "loss" here,
+    # the week was graded early and mercy happened to paper over it -- that's
+    # exactly the oscillation bug (mercy could later un-fire once g2 finalizes).
+    assert r["e1"]["result"] == "pending"
+    assert r["e2"]["result"] == "pending"

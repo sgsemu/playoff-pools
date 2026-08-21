@@ -37,6 +37,16 @@ def resolve_week(entries, picks_by_entry, games_by_espn_id, week, mercy_after_we
     """Grade one week. Only active entries are considered. Tie counts as a win
     (survive). A missing pick is a loss. If, after grading, no active entry
     survived AND week >= mercy_after_week, nobody is eliminated (mercy rule).
+
+    The week is graded as a whole, not game-by-game: if ANY active entry's
+    picked game hasn't gone final yet, the entire week is deferred (every
+    active entry comes back "pending", nothing is eliminated, mercy is not
+    evaluated). Grading a partial week would let elimination status -- and
+    whether mercy fires -- oscillate as more games finalize, since a call
+    with fewer decided games can produce a different verdict than a later
+    call with the same decided games plus more. Only once every graded
+    entry's game is final do wins/losses/mercy get applied.
+
     Idempotent: depends only on inputs."""
     graded = {}
     survivors = 0
@@ -58,14 +68,20 @@ def resolve_week(entries, picks_by_entry, games_by_espn_id, week, mercy_after_we
         if survived:
             survivors += 1
 
-    decided = [g for g in graded.values() if g["survived"] is not None]
-    mercy = week >= mercy_after_week and survivors == 0 and len(decided) > 0
+    if any(g["survived"] is None for g in graded.values()):
+        # Week isn't complete yet -- defer the whole week rather than grading
+        # some entries now and the rest later, which is what let mercy fire
+        # (or fail to fire) inconsistently across calls.
+        return {
+            eid: {"result": "pending", "status": "active", "eliminated_week": None}
+            for eid in graded
+        }
+
+    mercy = week >= mercy_after_week and survivors == 0 and len(graded) > 0
 
     out = {}
     for eid, g in graded.items():
-        if g["survived"] is None:
-            out[eid] = {"result": "pending", "status": "active", "eliminated_week": None}
-        elif g["survived"] or mercy:
+        if g["survived"] or mercy:
             out[eid] = {"result": g["result"], "status": "active", "eliminated_week": None}
         else:
             out[eid] = {"result": g["result"], "status": "eliminated", "eliminated_week": week}
