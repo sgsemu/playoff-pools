@@ -267,6 +267,24 @@ def test_record_buyback_inserts_and_reactivates_entry():
     assert updated_entry["status"] == "active"
 
 
+def test_record_buyback_sets_active_from_week_watermark():
+    # A buyback FOR week 6 means the entry is alive from week 6 onward -- its
+    # week-5 losing pick must no longer count against it. record_buyback must
+    # advance the watermark alongside flipping status to active.
+    sb = FakeSb({
+        "survivor_entries": [
+            {"id": "e1", "pool_id": "pool1", "member_id": "m1",
+             "status": "eliminated", "eliminated_week": 5, "active_from_week": 1},
+        ],
+    })
+    entry = sb.tables["survivor_entries"][0]
+    record_buyback(sb, entry, week=6, kind="regular", fee=None)
+
+    updated_entry = sb.tables["survivor_entries"][0]
+    assert updated_entry["status"] == "active"
+    assert updated_entry["active_from_week"] == 6
+
+
 # ---------------------------------------------------------------------------
 # board_data
 # ---------------------------------------------------------------------------
@@ -422,3 +440,83 @@ def test_resolve_and_apply_is_idempotent_on_second_call():
     assert entries_after_second["e1"]["status"] == "active"
     assert entries_after_second["e2"]["status"] == "eliminated"
     assert entries_after_second["e2"]["eliminated_week"] == 1
+
+
+# ---------------------------------------------------------------------------
+# active_from_week watermark: buyback / reinstate survive re-resolution
+# ---------------------------------------------------------------------------
+
+def _week5_loss_fixture(entry_row):
+    """One pool, one competition, one fully-final week-5 game: team-A (home)
+    beats team-B (away) 20-10. The single entry picked team-B (a loss). The
+    caller supplies the entry row so it can set status/active_from_week to
+    model buyback vs reinstate."""
+    return FakeSb({
+        "pool_competitions": [
+            {"pool_id": "pool1", "competition_id": "comp1"},
+        ],
+        "teams": [
+            {"id": "team-A", "competition_id": "comp1", "ext_id": "T-A"},
+            {"id": "team-B", "competition_id": "comp1", "ext_id": "T-B"},
+        ],
+        "game_results": [
+            {"espn_game_id": "g5", "week": 5, "competition_id": "comp1",
+             "home_team_id": "T-A", "away_team_id": "T-B",
+             "home_score": 20, "away_score": 10},
+        ],
+        "survivor_entries": [entry_row],
+        "survivor_picks": [
+            {"id": "p1", "entry_id": "e1", "week": 5, "team_ref": "team-B",
+             "espn_game_id": "g5", "result": "loss"},
+        ],
+    })
+
+
+def test_buyback_survives_re_resolution():
+    # Bug repro: entry lost week 5 (eliminated), then bought back FOR week 6.
+    # The next ESPN sync re-resolves week 5 and must NOT re-eliminate the
+    # now-active entry -- its week-5 loss predates the buyback watermark.
+    sb = _week5_loss_fixture(
+        {"id": "e1", "pool_id": "pool1", "member_id": "m1",
+         "status": "eliminated", "eliminated_week": 5, "active_from_week": 1},
+    )
+    entry = sb.tables["survivor_entries"][0]
+    record_buyback(sb, entry, week=6, kind="regular", fee=None)
+
+    pool = {"id": "pool1", "survivor_config": {}}
+    resolve_and_apply(sb, pool)
+
+    entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
+    assert entries_by_id["e1"]["status"] == "active"
+    assert entries_by_id["e1"]["active_from_week"] == 6
+
+
+def test_reinstate_survives_re_resolution():
+    # Commissioner reinstate: status flipped back to active with the watermark
+    # advanced to the current week (6). Re-resolving week 5 must leave it
+    # active rather than clobbering the manual reinstate.
+    sb = _week5_loss_fixture(
+        {"id": "e1", "pool_id": "pool1", "member_id": "m1",
+         "status": "active", "eliminated_week": None, "active_from_week": 6},
+    )
+    pool = {"id": "pool1", "survivor_config": {}}
+    resolve_and_apply(sb, pool)
+
+    entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
+    assert entries_by_id["e1"]["status"] == "active"
+
+
+def test_normal_elimination_still_fires_from_week_one():
+    # A vanilla entry (active_from_week defaults to 1) that loses week 5 with
+    # no buyback must still be eliminated -- the watermark only protects weeks
+    # BEFORE re-entry, never disables grading outright.
+    sb = _week5_loss_fixture(
+        {"id": "e1", "pool_id": "pool1", "member_id": "m1",
+         "status": "active", "eliminated_week": None, "active_from_week": 1},
+    )
+    pool = {"id": "pool1", "survivor_config": {}}
+    resolve_and_apply(sb, pool)
+
+    entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
+    assert entries_by_id["e1"]["status"] == "eliminated"
+    assert entries_by_id["e1"]["eliminated_week"] == 5

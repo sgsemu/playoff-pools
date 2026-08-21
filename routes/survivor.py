@@ -23,6 +23,7 @@ from services.survivor_data import (
     board_data,
     resolve_week_for_pool,
     TeamAlreadyUsed,
+    _is_unique_violation,
 )
 from services.odds import get_event_for_game, best_spread_by_team
 from services.team_colors import team_logo_url
@@ -649,7 +650,15 @@ def record_buyback_for(pool_id):
         return jsonify({"error": "Member not in pool"}), 400
 
     entry = get_or_create_entry(sb, pool_id, member_id)
-    buyback = record_buyback(sb, entry, week, kind, fee=fee)
+    try:
+        buyback = record_buyback(sb, entry, week, kind, fee=fee)
+    except Exception as exc:
+        # A second super buyback trips the uniq_super_buyback partial index;
+        # surface it as a clean 400 (mirroring submit_pick's TeamAlreadyUsed
+        # mapping) rather than bubbling an unhandled 500.
+        if _is_unique_violation(exc):
+            return jsonify({"error": "Super buyback already used"}), 400
+        raise
     return jsonify({"ok": True, "buyback": buyback})
 
 
@@ -669,8 +678,24 @@ def set_status(pool_id):
     if not member_id or status not in ("active", "eliminated"):
         return jsonify({"error": "member_id and status ('active'|'eliminated') required"}), 400
 
+    # Reinstating advances the active_from_week watermark so the next
+    # re-resolution (which re-grades every past week on every ESPN sync)
+    # can't re-eliminate the entry on a loss from before it was reinstated.
+    # The commissioner may pass it explicitly (active_from_week or week);
+    # otherwise default to the pool's current week. Eliminating leaves the
+    # watermark alone.
+    active_from_week = None
     if status == "active":
         eliminated_week = None
+        raw_afw = data.get("active_from_week", data.get("week"))
+        if raw_afw is not None:
+            try:
+                active_from_week = int(raw_afw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "active_from_week must be an integer"}), 400
+        else:
+            comp_ids = get_pool_competition_ids(sb, pool_id)
+            active_from_week = _resolve_current_week(sb, comp_ids)
     elif eliminated_week is not None:
         try:
             eliminated_week = int(eliminated_week)
@@ -681,10 +706,12 @@ def set_status(pool_id):
         return jsonify({"error": "Member not in pool"}), 400
 
     entry = get_or_create_entry(sb, pool_id, member_id)
-    updated = sb.table("survivor_entries").update({
-        "status": status,
-        "eliminated_week": eliminated_week,
-    }).eq("id", entry["id"]).execute().data
+    update_payload = {"status": status, "eliminated_week": eliminated_week}
+    if status == "active" and active_from_week is not None:
+        update_payload["active_from_week"] = active_from_week
+    updated = sb.table("survivor_entries").update(
+        update_payload
+    ).eq("id", entry["id"]).execute().data
     return jsonify({"ok": True, "entry": updated[0] if updated else entry})
 
 

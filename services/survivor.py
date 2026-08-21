@@ -47,11 +47,22 @@ def resolve_week(entries, picks_by_entry, games_by_espn_id, week, mercy_after_we
     call with the same decided games plus more. Only once every graded
     entry's game is final do wins/losses/mercy get applied.
 
+    An entry's `active_from_week` watermark (default 1) is the earliest week
+    it is in play: a buyback, a commissioner reinstate, or a mid-season join
+    all set it forward. Weeks before the watermark are skipped entirely -- not
+    graded, not eliminated, status untouched -- so re-resolving an early losing
+    week (which the ESPN-sync path does on every sync) can never undo a later
+    re-entry. Only in-play entries (week >= watermark) feed the pending/mercy/
+    survivor tallies.
+
     Idempotent: depends only on inputs."""
     graded = {}
     survivors = 0
     for e in entries:
         if e["status"] != "active":
+            continue
+        if week < e.get("active_from_week", 1):
+            # Entry re-entered after this week -- out of play here, leave alone.
             continue
         pick = picks_by_entry.get(e["id"])
         if not pick:

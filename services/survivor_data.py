@@ -31,7 +31,13 @@ def _is_unique_violation(exc):
 
 def get_or_create_entry(sb, pool_id, member_id):
     """Return this member's survivor_entries row for the pool, creating one
-    (status='active') if it doesn't exist yet."""
+    (status='active') if it doesn't exist yet.
+
+    A brand-new entry keeps the DB default active_from_week=1. The current
+    week isn't cleanly derivable here (it lives in the route layer's lock/
+    game-schedule logic), so a mid-season joiner's watermark is deliberately
+    left to the commissioner reinstate/set-status path to advance -- the
+    must-fix re-resolution cases (buyback, reinstate) set it explicitly."""
     rows = sb.table("survivor_entries").select("*").eq(
         "pool_id", pool_id
     ).eq("member_id", member_id).execute().data
@@ -84,16 +90,20 @@ def submit_pick(sb, entry, week, team_ref, espn_game_id, set_by="member", overri
 
 
 def record_buyback(sb, entry, week, kind, fee=None):
-    """Log a buyback and bring the entry back to 'active'."""
+    """Log a buyback and bring the entry back to 'active' FROM `week`. Setting
+    active_from_week to the buyback week is what stops the next re-resolution
+    from re-grading (and re-eliminating on) the losing week the entry bought
+    back from -- grading only ever considers weeks >= active_from_week."""
     inserted = sb.table("survivor_buybacks").insert({
         "entry_id": entry["id"],
         "week": week,
         "kind": kind,
         "fee": fee,
     }).execute().data
-    sb.table("survivor_entries").update({"status": "active"}).eq(
-        "id", entry["id"]
-    ).execute()
+    sb.table("survivor_entries").update({
+        "status": "active",
+        "active_from_week": week,
+    }).eq("id", entry["id"]).execute()
     return inserted[0]
 
 
@@ -137,6 +147,7 @@ def board_data(sb, pool_id):
             "member_id": e["member_id"],
             "status": e["status"],
             "eliminated_week": e.get("eliminated_week"),
+            "active_from_week": e.get("active_from_week", 1),
             "display_name": user.get("display_name"),
             "buybacks": buybacks_by_entry.get(e["id"], []),
         })

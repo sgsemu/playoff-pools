@@ -103,6 +103,37 @@ def test_resolver_partial_week_defers_no_eliminations():
     assert r["e2"]["result"] == "pending"
 
 
+def test_resolver_skips_weeks_before_active_from_week():
+    # An entry re-entered (buyback/reinstate) FROM week 6 must not be graded
+    # -- and above all not eliminated -- for a week-5 loss that predates its
+    # re-entry. Its watermark makes week 5 out of play entirely.
+    entries = [{"id": "e1", "status": "active", "eliminated_week": None,
+                "active_from_week": 6}]
+    picks = {"e1": {"week": 5, "team_ext_id": 20, "espn_game_id": "g1"}}
+    games = {"g1": _game("g1", 10, 20, winner=10)}  # e1 (team 20) lost
+    r = resolve_week(entries, picks, games, week=5)
+    assert "e1" not in r  # not graded at all -- left untouched
+
+
+def test_resolver_skips_no_pick_before_active_from_week():
+    # A mid-season entrant (watermark 6) with no week-1 pick must not be
+    # hit with a no_pick elimination for a week before it was in play.
+    entries = [{"id": "e1", "status": "active", "eliminated_week": None,
+                "active_from_week": 6}]
+    r = resolve_week(entries, {}, {}, week=1)
+    assert r == {}  # nobody in play -> no grading, no elimination
+
+
+def test_resolver_grades_at_and_after_active_from_week():
+    # From the watermark week onward, grading resumes normally.
+    entries = [{"id": "e1", "status": "active", "eliminated_week": None,
+                "active_from_week": 6}]
+    picks = {"e1": {"week": 6, "team_ext_id": 20, "espn_game_id": "g1"}}
+    games = {"g1": _game("g1", 10, 20, winner=10)}  # e1 lost week 6
+    r = resolve_week(entries, picks, games, week=6)
+    assert r["e1"]["status"] == "eliminated" and r["e1"]["eliminated_week"] == 6
+
+
 CFG = {"regular_buyback": {"weeks": [1, 6], "limit": None, "deadline": "sunday_1pm"},
        "super_buyback": {"weeks": [7, 17], "limit": 1, "fee": 500, "deadline": "friday_2359_et"},
        "final_week": 18}

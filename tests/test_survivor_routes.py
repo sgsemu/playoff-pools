@@ -5,6 +5,7 @@ os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 
 import pytest
 from unittest.mock import patch
+from postgrest.exceptions import APIError
 from app import create_app
 
 
@@ -79,6 +80,7 @@ class _TableHandle:
 class FakeSb:
     def __init__(self, tables=None):
         self.tables = {k: list(v) for k, v in (tables or {}).items()}
+        self.raise_on_insert = {}  # table -> exception to raise once
         self._next_id = 1000
 
     def table(self, name):
@@ -102,6 +104,10 @@ class FakeSb:
             matched = [r for r in rows if self._match(r, q.filters)]
             return _Result(matched)
         if q.verb == "insert":
+            exc = self.raise_on_insert.get(q.table)
+            if exc is not None:
+                self.raise_on_insert[q.table] = None
+                raise exc
             row = dict(q.payload)
             row.setdefault("id", self._new_id())
             rows.append(row)
@@ -411,6 +417,58 @@ def test_set_status_eliminates_entry(mock_sb, authed_client):
     assert resp.status_code == 200
     assert sb.tables["survivor_entries"][0]["status"] == "eliminated"
     assert sb.tables["survivor_entries"][0]["eliminated_week"] == 5
+
+
+@patch("routes.survivor.get_service_client")
+def test_set_status_reinstate_advances_active_from_week(mock_sb, authed_client):
+    # Reinstating an eliminated entry must advance active_from_week to the
+    # given week so a later re-resolution can't re-eliminate it on the loss
+    # it was reinstated past.
+    tables = _base_tables(creator_id="test-uuid")
+    tables["pool_members"].append(
+        {"id": "m-target", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    tables["survivor_entries"] = [
+        {"id": "e-target", "pool_id": "pool-1", "member_id": "m-target",
+         "status": "eliminated", "eliminated_week": 5, "active_from_week": 1},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/set-status", json={
+        "member_id": "m-target", "status": "active", "week": 6,
+    })
+    assert resp.status_code == 200
+    entry = sb.tables["survivor_entries"][0]
+    assert entry["status"] == "active"
+    assert entry["eliminated_week"] is None
+    assert entry["active_from_week"] == 6
+
+
+@patch("routes.survivor.get_service_client")
+def test_buyback_for_duplicate_super_returns_400(mock_sb, authed_client):
+    # A second super buyback trips the uniq_super_buyback unique index; the
+    # commissioner path (which skips the member-side limit check) must map the
+    # 23505 violation to a clean 400 instead of a 500.
+    tables = _base_tables(creator_id="test-uuid")
+    tables["pool_members"].append(
+        {"id": "m-target", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    tables["survivor_entries"] = [
+        {"id": "e-target", "pool_id": "pool-1", "member_id": "m-target", "status": "eliminated"},
+    ]
+    sb = FakeSb(tables)
+    sb.raise_on_insert["survivor_buybacks"] = APIError({
+        "code": "23505",
+        "message": "duplicate key value violates unique constraint \"uniq_super_buyback\"",
+    })
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/buyback-for", json={
+        "member_id": "m-target", "week": 9, "kind": "super", "fee": 500,
+    })
+    assert resp.status_code == 400
+    assert "already used" in resp.get_json()["error"].lower()
 
 
 # ---------------------------------------------------------------------------
