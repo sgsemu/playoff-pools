@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Survivor - {{ pool.name }}{% endblock %}
+{% block content %}
+<div class="survivor-page">
+    <h1>{{ pool.name }} — Survivor</h1>
+    <p class="section-subtitle">Week {{ current_week }} · placeholder board, replaced by Task 12.</p>
+    <ul>
+        {% for entry in board.entries %}
+        <li>{{ entry.display_name }} — {{ entry.status }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}
