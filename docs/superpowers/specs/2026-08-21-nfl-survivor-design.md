@@ -219,6 +219,34 @@ Pick screen enriches each game via the existing `services/odds.py`:
 5. **Pool creation** — new `survivor` type, selects the NFL 2026 competition,
    seeds `survivor_config` defaults.
 
+## Performance & Instant-Feel UX
+
+Goal: survivor pages feel instant, especially the pick flow on mobile. Reuses the
+app's existing performance playbook (June 2026 latency work) plus client optimism.
+
+1. **Read precomputed state, never recompute on render.** The resolver writes
+   `survivor_picks.result` and `survivor_entries.status` when games finish; the
+   Status Board and pick screen only `SELECT`. No ESPN calls or scoring math on
+   the render path.
+2. **Batched reads (no N+1).** Status Board = one query for entries + one for the
+   week's picks + one for the week's games, assembled in memory — O(1) in member
+   count, mirroring the dashboard 13→6 query fix.
+3. **Optimistic pick save.** Reuse the existing optimistic-DOM pattern (star-click
+   optimism): the selected team highlights and flips to "saved" immediately
+   client-side; the POST runs in the background and reconciles on response
+   (revert + toast on failure). Snappy on mobile Safari.
+4. **Stale-while-revalidate board.** Cache the last rendered board JSON in
+   `localStorage`; on revisit, paint it instantly, then refresh from the server
+   and reconcile. Keyed by pool + week so a resolved week doesn't show stale
+   status for long.
+5. **Cache external data.** Odds keep the 6-hour TTL cache; logos are static CDN
+   URLs (browser-cached); ESPN results sync on the throttled cadence, off the hot
+   path.
+6. **Co-located compute.** Inherits the `pdx1`↔Supabase region pin (~3ms/query).
+
+Not doing local-first/PWA (service worker + IndexedDB) — overkill for a friends
+pool; the above gives instant-feel without a new stack.
+
 ## Test Plan
 
 Extends the pytest suite; all logic is pure functions (no network):
