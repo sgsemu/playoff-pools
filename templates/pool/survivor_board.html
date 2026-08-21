@@ -28,12 +28,13 @@
                     {% for w in range(1, current_week + 1) %}
                     {% set pick = board.picks.get(entry.id, {}).get(w) %}
                     {% set bb = entry.buybacks | selectattr('week', 'equalto', w) | first %}
-                    {% if w == current_week and not current_week_locked %}
+                    {% set is_own_entry = viewer_entry_id and entry.id == viewer_entry_id %}
+                    {% if not week_locked.get(w, False) and not is_own_entry %}
                     <td class="sb-cell sb-locked" title="Picks for this week are hidden until lock">🔒</td>
                     {% elif pick %}
                     <td class="sb-cell sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
                         {{ team_abbrs.get(pick.team_ref, pick.team_ref) }}
-                        {% if pick.set_by == 'commissioner' %}<sup class="sb-commish" title="Set by commissioner">©</sup>{% endif %}
+                        {% if pick.set_by == 'commissioner' %}<sup class="sb-commish" title="Set by commissioner">C</sup>{% endif %}
                         {% if bb %}<sup class="sb-buyback" title="Buyback">↩</sup>{% endif %}
                     </td>
                     {% elif bb %}

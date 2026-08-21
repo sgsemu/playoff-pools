@@ -492,9 +492,15 @@ def test_survivor_board_hides_current_week_picks_until_lock(mock_sb, authed_clie
     """The current (not-yet-locked) week column shows the lock glyph instead
     of leaking a pick -- here week 2 has no game_results yet, so
     _week_lock_at can't resolve a lock instant and the board conservatively
-    treats it as locked/hidden."""
+    treats it as locked/hidden. The viewing session ("test-uuid") is a third
+    party with no entry of their own in this pool -- distinct from the
+    entry's owner ("u1") -- so the "always see your own pick" exception
+    doesn't apply here and the lock glyph is what should render."""
     tables = _base_tables()
     tables["teams"] = [{"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"}]
+    tables["pool_members"] = [
+        {"id": "m1", "pool_id": "pool-1", "user_id": "u1"},
+    ]
     tables["survivor_entries"] = [
         {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
          "eliminated_week": None,
@@ -510,6 +516,72 @@ def test_survivor_board_hides_current_week_picks_until_lock(mock_sb, authed_clie
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "\U0001F512" in html  # lock glyph for the hidden current week
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_hides_other_members_early_week_pick_before_lock(mock_sb, authed_client):
+    """Reproduces the board-leak bug: week 1 is fully graded for both
+    members, then Alice submits her week-2 pick while week 2 is still
+    before its own lock. The old code gated hiding on
+    `current_week = max(weeks_with_picks) + 1`, so Alice's early pick
+    bumped weeks_with_picks to include week 2, which flipped week 2 from
+    "current/hidden" to "past/revealed" for EVERYONE -- Bob could see
+    Alice's week-2 team days before lock. Hiding must instead be keyed off
+    week 2's own lock instant, and Alice must still see her own pick."""
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF"},
+        {"id": "team-C", "ext_id": "ext-C", "abbreviation": "DAL"},
+        {"id": "team-D", "ext_id": "ext-D", "abbreviation": "PHI"},
+    ]
+    tables["pool_members"] = [
+        {"id": "m1", "pool_id": "pool-1", "user_id": "alice-uuid"},
+        {"id": "m2", "pool_id": "pool-1", "user_id": "bob-uuid"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "alice-uuid", "users": {"display_name": "Alice"}}},
+        {"id": "e2", "pool_id": "pool-1", "member_id": "m2", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "bob-uuid", "users": {"display_name": "Bob"}}},
+    ]
+    tables["survivor_picks"] = [
+        # Week 1 -- fully graded, safely in the past.
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "result": "win", "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "result": "loss", "set_by": "member"},
+        # Week 2 -- only Alice has picked, and week 2 hasn't locked yet.
+        {"id": "p3", "entry_id": "e1", "week": 2, "team_ref": "team-C", "result": None, "set_by": "member"},
+    ]
+    tables["game_results"] = [
+        # Week 1 kicked off well in the past -> week 1 is locked/revealed.
+        {"espn_game_id": "g1", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2020-01-05T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+        # Week 2 kicks off far in the future -> week 2 is NOT locked yet.
+        {"espn_game_id": "g2", "competition_id": "c1", "week": 2,
+         "kickoff_at": "2099-01-04T18:00:00+00:00",
+         "home_team_id": "ext-C", "away_team_id": "ext-D"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    # Bob loads the board: must NOT see Alice's week-2 pick.
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "bob-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    bob_html = resp.get_data(as_text=True)
+    assert "DAL" not in bob_html, "week-2 pick leaked to another member before lock"
+
+    # Alice loads the board: she DOES see her own week-2 pick.
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "alice-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    alice_html = resp.get_data(as_text=True)
+    assert "DAL" in alice_html
 
 
 @patch("routes.survivor.get_service_client")

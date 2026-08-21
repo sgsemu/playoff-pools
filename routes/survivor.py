@@ -128,7 +128,14 @@ def survivor_board(pool_id):
     pool = pool[0]
 
     data = board_data(sb, pool_id)
-    # Best-effort default: the week after the last one anyone has picked yet.
+    # Display-only default for the header and the range of week columns
+    # shown: the week after the last one anyone has picked yet. This must
+    # NEVER gate which picks are hidden -- weeks_with_picks grows the
+    # instant anyone submits a pick, so using it for hiding would flip an
+    # early week from "current/hidden" to "past/revealed" the moment one
+    # member picks early, leaking that pick to every other member days
+    # before the week actually locks. See week_locked below for the real
+    # per-week hiding rule.
     current_week = (max(data["weeks"]) + 1) if data["weeks"] else 1
 
     # Team abbreviations for every team_ref referenced by any pick, resolved
@@ -146,11 +153,31 @@ def survivor_board(pool_id):
         for ref, team in teams_by_ref(sb, team_refs).items()
     }
 
-    week_lock_at = _week_lock_at(sb, pool_id, current_week)
-    # Conservative default: if we can't yet determine the lock instant (no
-    # game data ingested for the week), treat the week as NOT locked so the
-    # board keeps hiding picks rather than accidentally revealing one early.
-    current_week_locked = week_lock_at is not None and datetime.now(ET) >= week_lock_at
+    # Per-week lock state, computed independently for EVERY week column the
+    # board shows, from that week's OWN lock instant (never from whether
+    # anyone has picked it yet). Conservative default: if we can't yet
+    # determine a week's lock instant (no game data ingested), treat it as
+    # NOT locked so the board keeps hiding rather than accidentally
+    # revealing early.
+    now = datetime.now(ET)
+    week_locked = {}
+    for w in range(1, current_week + 1):
+        lock_at = _week_lock_at(sb, pool_id, w)
+        week_locked[w] = lock_at is not None and now >= lock_at
+    current_week_locked = week_locked.get(current_week, False)
+
+    # A member always sees their OWN pick, even pre-lock -- only other
+    # members' picks are hidden for an unlocked week. This is a fifth read
+    # (on top of board_data's three plus team_abbrs' one): find the viewing
+    # user's membership in this pool, then their entry, if any.
+    viewer_member = sb.table("pool_members").select("id").eq(
+        "pool_id", pool_id
+    ).eq("user_id", session["user_id"]).execute().data
+    viewer_member_id = viewer_member[0]["id"] if viewer_member else None
+    viewer_entry_id = next(
+        (e["id"] for e in data["entries"] if e["member_id"] == viewer_member_id),
+        None,
+    ) if viewer_member_id else None
 
     alive_count = sum(1 for e in data["entries"] if e["status"] == "active")
 
@@ -158,8 +185,8 @@ def survivor_board(pool_id):
         "pool/survivor_board.html",
         pool=pool, pool_id=pool_id, board=data, current_week=current_week,
         team_abbrs=team_abbrs, current_week_locked=current_week_locked,
-        week_lock_at=week_lock_at, alive_count=alive_count,
-        total_count=len(data["entries"]),
+        week_locked=week_locked, viewer_entry_id=viewer_entry_id,
+        alive_count=alive_count, total_count=len(data["entries"]),
     )
 
 
