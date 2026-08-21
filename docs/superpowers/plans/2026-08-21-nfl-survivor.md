@@ -732,5 +732,5 @@ git commit -m "feat(survivor): commissioner panel"
 
 ## Open items (carry from spec)
 
-- Super BuyBack deadline encoded as **Friday 11:59 PM ET** — confirm vs. "earliest kickoff."
+- Super BuyBack deadline **confirmed: Friday 11:59 PM ET**.
 - Post-Week-18 Playoff Draw settlement is commissioner-manual.

@@ -273,10 +273,8 @@ Extends the pytest suite; all logic is pure functions (no network):
 - **BDV rule** — offline commissioner discretion (covered by manual
   eliminate/reinstate).
 - **Multiple entries per member** — not supported (one entry per member).
-- **ASSUMPTION TO CONFIRM:** Super BuyBack deadline encoded as **Friday 11:59 PM
-  ET**. The commissioner note says "by Friday"; the original screenshot said "by
-  kickoff of the earliest game that week." These differ on weeks with a Thursday
-  game. Using end-of-Friday ET unless corrected.
+- **CONFIRMED (2026-08-21):** Super BuyBack deadline is **Friday 11:59 PM ET**
+  (commissioner confirmed "by Friday" over the screenshot's "earliest kickoff").
 
 ## Phasing note
 
