@@ -41,14 +41,18 @@ def get_or_create_entry(sb, pool_id, member_id):
 
 def submit_pick(sb, entry, week, team_ref, espn_game_id, set_by="member", override_note=None):
     """Set (or change) an entry's pick for `week`. Raises TeamAlreadyUsed if
-    `team_ref` is already on any of this entry's picks -- checked up front,
-    and again as a race guard around the write itself (the DB's
-    UNIQUE(entry_id, team_ref) index is the final word)."""
+    `team_ref` is already on one of this entry's OTHER weeks -- checked up
+    front, and again as a race guard around the write itself (the DB's
+    UNIQUE(entry_id, team_ref) index is the final word). An unchanged
+    resubmit of the same team_ref for the same week is not a reuse -- the
+    upsert re-writes that exact (entry_id, week) row, which the unique index
+    compares against OTHER rows, not itself -- so it's excluded up front and
+    allowed to proceed."""
     entry_id = entry["id"]
-    existing = sb.table("survivor_picks").select("team_ref").eq(
+    existing = sb.table("survivor_picks").select("team_ref, week").eq(
         "entry_id", entry_id
     ).execute().data
-    used_refs = {r["team_ref"] for r in existing}
+    used_refs = {r["team_ref"] for r in existing if r["week"] != week}
     if team_ref in used_refs:
         raise TeamAlreadyUsed(f"entry {entry_id} already used team {team_ref}")
 

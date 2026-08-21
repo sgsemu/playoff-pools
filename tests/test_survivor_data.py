@@ -172,6 +172,37 @@ def test_submit_pick_success_upserts_on_entry_week():
     assert len([r for r in sb.tables["survivor_picks"] if r["entry_id"] == "e1"]) == 1
 
 
+def test_submit_pick_unchanged_resubmit_same_week_succeeds():
+    # Re-submitting the SAME team_ref for the SAME week (optimistic-save
+    # retry, double-tap, or just picking the same team again) must succeed:
+    # UNIQUE(entry_id, team_ref) is only violated by OTHER rows, and the
+    # upsert-on-(entry_id,week) re-upserts this exact row, not a new one.
+    sb = FakeSb({
+        "survivor_picks": [
+            {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A",
+             "espn_game_id": "g1", "result": "pending", "set_by": "member"},
+        ],
+    })
+    entry = {"id": "e1", "pool_id": "pool1", "member_id": "m1", "status": "active"}
+    pick = submit_pick(sb, entry, week=1, team_ref="team-A", espn_game_id="g1")
+    assert pick["team_ref"] == "team-A"
+    assert pick["week"] == 1
+    assert len([r for r in sb.tables["survivor_picks"] if r["entry_id"] == "e1"]) == 1
+
+
+def test_submit_pick_same_team_different_week_still_raises():
+    # The guard against reusing a team across weeks must still hold.
+    sb = FakeSb({
+        "survivor_picks": [
+            {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A",
+             "espn_game_id": "g1", "result": "win", "set_by": "member"},
+        ],
+    })
+    entry = {"id": "e1", "pool_id": "pool1", "member_id": "m1", "status": "active"}
+    with pytest.raises(TeamAlreadyUsed):
+        submit_pick(sb, entry, week=2, team_ref="team-A", espn_game_id="g2")
+
+
 def test_submit_pick_race_condition_reraised_as_team_already_used():
     sb = FakeSb({"survivor_picks": []})
     sb.raise_on_upsert["survivor_picks"] = APIError({
