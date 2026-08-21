@@ -782,3 +782,30 @@ a.best-line-book:hover { background: #353550; }
 .start-auction-row .section-title {
     font-size: 1rem; margin-top: 0;
 }
+
+/* Survivor status board (Task 12): members x weeks grid. */
+.survivor-board-header { margin-bottom: 10px; }
+.survivor-board-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.survivor-grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+.survivor-grid th, .survivor-grid td {
+    border: 1px solid #2a2a3e; padding: 6px 10px; text-align: center; white-space: nowrap;
+}
+.survivor-grid th {
+    font-weight: 600; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.survivor-grid-name { text-align: left !important; font-weight: 600; }
+.sb-win { background: rgba(74, 222, 128, 0.18); color: #4ade80; }
+.sb-loss { background: rgba(248, 113, 113, 0.18); color: #f87171; text-decoration: line-through; }
+.sb-pending { background: rgba(250, 204, 21, 0.12); color: #facc15; font-style: italic; }
+.sb-none { color: #555; }
+.sb-locked {
+    color: #888; font-style: italic;
+    background: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(136, 136, 136, 0.08) 4px, rgba(136, 136, 136, 0.08) 8px);
+}
+.sb-buyback-cell { color: #facc15; font-weight: 700; }
+.sb-commish, .sb-buyback { font-size: 9px; margin-left: 1px; vertical-align: super; }
+.sb-commish { color: #c084fc; }
+.sb-buyback { color: #facc15; }
+.sb-status { white-space: nowrap; }
+.st-alive { color: #4ade80; font-weight: 700; }
+.st-out { color: #f87171; font-weight: 700; }

@@ -5,11 +5,11 @@ services/survivor.py; entry/pick/buyback persistence lives in
 services/survivor_data.py. This module is the thin HTTP layer: auth guard,
 JSON parsing, and translating decisions into status codes.
 """
-from datetime import datetime
+from datetime import datetime, time
 from flask import Blueprint, request, jsonify, render_template, session
 from routes.auth import login_required
 from services.supabase_client import get_service_client
-from services.competitions import get_pool_competition_ids, get_team
+from services.competitions import get_pool_competition_ids, get_team, teams_by_ref
 from services.survivor import ET, is_locked, buyback_option
 from services.survivor_data import (
     get_or_create_entry,
@@ -101,6 +101,23 @@ def _week_sunday(sb, competition_id, week):
     return dates[0] if dates else None
 
 
+def _week_lock_at(sb, pool_id, week):
+    """The board-display lock instant for a whole week: that week's Sunday
+    1 PM ET, mirroring pick_lock_at's anchor. This is a display-only
+    simplification of the real per-pick lock (which can be earlier, e.g. a
+    Thursday night game) -- submit_survivor_pick still enforces the precise
+    per-pick lock; this just decides when the status board is allowed to
+    reveal the current week's picks. Returns None if there's no game data
+    yet to derive a Sunday from (e.g. week not scheduled/ingested)."""
+    comp_ids = get_pool_competition_ids(sb, pool_id)
+    if not comp_ids:
+        return None
+    week_sunday = _week_sunday(sb, comp_ids[0], week)
+    if not week_sunday:
+        return None
+    return datetime.combine(week_sunday, time(13, 0), tzinfo=ET)
+
+
 @survivor_bp.route("/pool/<pool_id>/survivor")
 @login_required
 def survivor_board(pool_id):
@@ -112,12 +129,37 @@ def survivor_board(pool_id):
 
     data = board_data(sb, pool_id)
     # Best-effort default: the week after the last one anyone has picked yet.
-    # Task 12's real board template is free to override/refine this.
     current_week = (max(data["weeks"]) + 1) if data["weeks"] else 1
+
+    # Team abbreviations for every team_ref referenced by any pick, resolved
+    # in one batched read here (not per-cell in the template) so board_data's
+    # "exactly three reads" batching intent still holds for its own tests --
+    # this is a fourth read the route layer adds on top.
+    team_refs = {
+        pick["team_ref"]
+        for entry_picks in data["picks"].values()
+        for pick in entry_picks.values()
+        if pick.get("team_ref")
+    }
+    team_abbrs = {
+        ref: team.get("abbreviation", ref)
+        for ref, team in teams_by_ref(sb, team_refs).items()
+    }
+
+    week_lock_at = _week_lock_at(sb, pool_id, current_week)
+    # Conservative default: if we can't yet determine the lock instant (no
+    # game data ingested for the week), treat the week as NOT locked so the
+    # board keeps hiding picks rather than accidentally revealing one early.
+    current_week_locked = week_lock_at is not None and datetime.now(ET) >= week_lock_at
+
+    alive_count = sum(1 for e in data["entries"] if e["status"] == "active")
 
     return render_template(
         "pool/survivor_board.html",
         pool=pool, pool_id=pool_id, board=data, current_week=current_week,
+        team_abbrs=team_abbrs, current_week_locked=current_week_locked,
+        week_lock_at=week_lock_at, alive_count=alive_count,
+        total_count=len(data["entries"]),
     )
 
 

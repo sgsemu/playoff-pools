@@ -448,6 +448,70 @@ def test_resolve_now_eliminates_loser_and_grades_winner(mock_sb, authed_client):
 # Commissioner: settle_season
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# GET board: renders the members x weeks grid (Task 12)
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_renders_grid_with_alive_count_and_out_label(mock_sb, authed_client):
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "u1", "users": {"display_name": "Alice"}}},
+        {"id": "e2", "pool_id": "pool-1", "member_id": "m2", "status": "eliminated",
+         "eliminated_week": 2,
+         "pool_members": {"user_id": "u2", "users": {"display_name": "Bob"}}},
+    ]
+    tables["survivor_picks"] = [
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "result": "win", "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "result": "loss", "set_by": "member"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    # Header alive count: 1 of 2 entries is still active.
+    assert "1 of 2 alive" in html
+    # At least one team abbreviation cell rendered.
+    assert "KC" in html
+    # Eliminated entry's row shows an OUT status label.
+    assert "OUT" in html
+    assert "Wk 2" in html
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_hides_current_week_picks_until_lock(mock_sb, authed_client):
+    """The current (not-yet-locked) week column shows the lock glyph instead
+    of leaking a pick -- here week 2 has no game_results yet, so
+    _week_lock_at can't resolve a lock instant and the board conservatively
+    treats it as locked/hidden."""
+    tables = _base_tables()
+    tables["teams"] = [{"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"}]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "u1", "users": {"display_name": "Alice"}}},
+    ]
+    tables["survivor_picks"] = [
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "result": "win", "set_by": "member"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "\U0001F512" in html  # lock glyph for the hidden current week
+
+
 @patch("routes.survivor.get_service_client")
 def test_settle_season_marks_pool_complete_and_records_winners(mock_sb, authed_client):
     tables = _base_tables(creator_id="test-uuid")
