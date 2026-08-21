@@ -179,11 +179,18 @@ def maybe_auto_sync(throttle_seconds=120):
     if new_count > 0:
         from services.survivor_data import resolve_and_apply
         sb = get_service_client()
-        for p in sb.table("pools").select("*").eq("draft_status", "complete").execute().data:
+        # Survivor pools have no draft phase, so they're eligible for
+        # resolution regardless of draft_status -- only draft/auction/
+        # salary_cap pools need draft_status=='complete' before recalculating
+        # standings (see task-10 finding: filtering all pools by
+        # draft_status=='complete' made survivor auto-resolution unreachable
+        # during the live season, since survivor pools default to 'pending'
+        # and only flip to 'complete' via settle_season at season end).
+        for p in sb.table("pools").select("*").execute().data:
             try:
                 if p.get("type") == "survivor":
                     resolve_and_apply(sb, p)
-                else:
+                elif p.get("draft_status") == "complete":
                     recalculate_standings(p["id"])
             except Exception:
                 pass
