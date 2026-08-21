@@ -130,9 +130,9 @@ class FakeSb:
         raise AssertionError(f"unhandled verb {q.verb}")
 
 
-def _base_tables(survivor_config=None):
+def _base_tables(survivor_config=None, creator_id="creator-uuid"):
     return {
-        "pools": [{"id": "pool-1", "survivor_config": survivor_config or {}}],
+        "pools": [{"id": "pool-1", "creator_id": creator_id, "survivor_config": survivor_config or {}}],
         "pool_members": [{"id": "m1", "pool_id": "pool-1", "user_id": "test-uuid"}],
         "pool_competitions": [{"pool_id": "pool-1", "competition_id": "c1"}],
         "survivor_entries": [],
@@ -282,3 +282,185 @@ def test_pick_team_not_in_game_returns_400(mock_sb, authed_client):
     assert resp.status_code == 400
     assert sb.tables["survivor_picks"] == []
     assert sb.tables["survivor_entries"] == []
+
+
+# ---------------------------------------------------------------------------
+# Commissioner: assign_pick
+# ---------------------------------------------------------------------------
+
+def _locked_game_tables(creator_id="test-uuid"):
+    """A game whose kickoff (and week-Sunday, since it's the only game that
+    week) is well in the past -- is_locked() would be True for a member pick,
+    but assign_pick doesn't consult the lock at all."""
+    tables = _base_tables(creator_id=creator_id)
+    tables["game_results"] = [
+        {"espn_game_id": "g-locked", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2020-01-05T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+    ]
+    tables["pool_members"].append(
+        {"id": "m-target", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    return tables
+
+
+@patch("routes.survivor.get_service_client")
+def test_assign_pick_by_creator_succeeds_on_locked_week(mock_sb, authed_client):
+    # authed_client's session user is "test-uuid" -- make it the pool creator.
+    sb = FakeSb(_locked_game_tables(creator_id="test-uuid"))
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/assign-pick", json={
+        "member_id": "m-target", "week": 1,
+        "team_ref": "team-A", "espn_game_id": "g-locked",
+        "note": "texted it in",
+    })
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert body["pick"]["team_ref"] == "team-A"
+    assert body["pick"]["set_by"] == "commissioner"
+    assert body["pick"]["override_note"] == "texted it in"
+
+    assert len(sb.tables["survivor_picks"]) == 1
+    assert len(sb.tables["survivor_entries"]) == 1
+    assert sb.tables["survivor_entries"][0]["member_id"] == "m-target"
+
+
+@patch("routes.survivor.get_service_client")
+def test_assign_pick_by_non_creator_returns_403(mock_sb, authed_client):
+    # Pool creator is someone else -- authed_client's "test-uuid" is only a
+    # regular member.
+    sb = FakeSb(_locked_game_tables(creator_id="someone-else-uuid"))
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/assign-pick", json={
+        "member_id": "m-target", "week": 1,
+        "team_ref": "team-A", "espn_game_id": "g-locked",
+    })
+    assert resp.status_code == 403
+    assert sb.tables["survivor_picks"] == []
+
+
+@patch("routes.survivor.get_service_client")
+def test_assign_pick_with_already_used_team_returns_400(mock_sb, authed_client):
+    tables = _locked_game_tables(creator_id="test-uuid")
+    tables["survivor_entries"] = [
+        {"id": "e-target", "pool_id": "pool-1", "member_id": "m-target", "status": "active"},
+    ]
+    tables["survivor_picks"] = [
+        {"id": "p1", "entry_id": "e-target", "week": 2, "team_ref": "team-A",
+         "espn_game_id": "g-other", "set_by": "member", "override_note": None},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/assign-pick", json={
+        "member_id": "m-target", "week": 1,
+        "team_ref": "team-A", "espn_game_id": "g-locked",
+    })
+    assert resp.status_code == 400
+    # Week 2's pick is untouched -- no new row was written for week 1.
+    assert len(sb.tables["survivor_picks"]) == 1
+    assert sb.tables["survivor_picks"][0]["week"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Commissioner: record_buyback_for
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_buyback_for_by_creator_bypasses_window_and_reinstates(mock_sb, authed_client):
+    tables = _base_tables(creator_id="test-uuid")
+    tables["pool_members"].append(
+        {"id": "m-target", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    tables["survivor_entries"] = [
+        {"id": "e-target", "pool_id": "pool-1", "member_id": "m-target", "status": "eliminated"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/buyback-for", json={
+        "member_id": "m-target", "week": 20, "kind": "regular", "fee": 0,
+    })
+    assert resp.status_code == 200
+    assert len(sb.tables["survivor_buybacks"]) == 1
+    assert sb.tables["survivor_entries"][0]["status"] == "active"
+
+
+# ---------------------------------------------------------------------------
+# Commissioner: set_status
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_set_status_eliminates_entry(mock_sb, authed_client):
+    tables = _base_tables(creator_id="test-uuid")
+    tables["pool_members"].append(
+        {"id": "m-target", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    tables["survivor_entries"] = [
+        {"id": "e-target", "pool_id": "pool-1", "member_id": "m-target", "status": "active"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/set-status", json={
+        "member_id": "m-target", "status": "eliminated", "eliminated_week": 5,
+    })
+    assert resp.status_code == 200
+    assert sb.tables["survivor_entries"][0]["status"] == "eliminated"
+    assert sb.tables["survivor_entries"][0]["eliminated_week"] == 5
+
+
+# ---------------------------------------------------------------------------
+# Commissioner: resolve_now
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_resolve_now_eliminates_loser_and_grades_winner(mock_sb, authed_client):
+    tables = _base_tables(creator_id="test-uuid")
+    tables["survivor_entries"] = [
+        {"id": "e-win", "pool_id": "pool-1", "member_id": "m1", "status": "active"},
+        {"id": "e-lose", "pool_id": "pool-1", "member_id": "m1", "status": "active"},
+    ]
+    tables["survivor_picks"] = [
+        {"id": "p-win", "entry_id": "e-win", "week": 1, "team_ref": "team-A", "espn_game_id": "g1"},
+        {"id": "p-lose", "entry_id": "e-lose", "week": 1, "team_ref": "team-B", "espn_game_id": "g1"},
+    ]
+    tables["game_results"] = [
+        {"espn_game_id": "g1", "week": 1, "home_team_id": "ext-A", "away_team_id": "ext-B",
+         "home_score": 24, "away_score": 10, "winner_team_id": "ext-A"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/resolve", json={"week": 1})
+    assert resp.status_code == 200
+
+    by_id = {e["id"]: e for e in sb.tables["survivor_entries"]}
+    assert by_id["e-win"]["status"] == "active"
+    assert by_id["e-lose"]["status"] == "eliminated"
+    assert by_id["e-lose"]["eliminated_week"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Commissioner: settle_season
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_settle_season_marks_pool_complete_and_records_winners(mock_sb, authed_client):
+    tables = _base_tables(creator_id="test-uuid")
+    tables["survivor_entries"] = [
+        {"id": "e-win", "pool_id": "pool-1", "member_id": "m1", "status": "active"},
+        {"id": "e-out", "pool_id": "pool-1", "member_id": "m1", "status": "eliminated"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/settle", json={})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["winner_entry_ids"] == ["e-win"]
+    assert sb.tables["pools"][0]["draft_status"] == "complete"
+    assert sb.tables["pools"][0]["survivor_config"]["winner_entry_ids"] == ["e-win"]
