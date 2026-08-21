@@ -8,3 +8,4 @@ venv/
 .vercel
 *.DS_Store
 .env*
+.superpowers/
