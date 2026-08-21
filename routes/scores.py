@@ -165,7 +165,8 @@ _last_auto_sync_at = 0.0
 
 def maybe_auto_sync(throttle_seconds=120):
     """Run ESPN sync at most once per throttle window. Recalcs standings for
-    pools with completed drafts when new games land. Returns new_count."""
+    pools with completed drafts when new games land, and re-resolves survivor
+    pools' weeks (idempotent, safe to run every poll). Returns new_count."""
     global _last_auto_sync_at
     now = time.time()
     if now - _last_auto_sync_at < throttle_seconds:
@@ -176,10 +177,14 @@ def maybe_auto_sync(throttle_seconds=120):
     except Exception:
         return 0
     if new_count > 0:
+        from services.survivor_data import resolve_and_apply
         sb = get_service_client()
-        for p in sb.table("pools").select("id").eq("draft_status", "complete").execute().data:
+        for p in sb.table("pools").select("*").eq("draft_status", "complete").execute().data:
             try:
-                recalculate_standings(p["id"])
+                if p.get("type") == "survivor":
+                    resolve_and_apply(sb, p)
+                else:
+                    recalculate_standings(p["id"])
             except Exception:
                 pass
     return new_count

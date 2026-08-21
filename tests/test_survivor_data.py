@@ -13,6 +13,7 @@ from services.survivor_data import (
     record_buyback,
     board_data,
     apply_resolution,
+    resolve_and_apply,
 )
 
 
@@ -339,3 +340,85 @@ def test_apply_resolution_writes_pick_result_and_entry_status():
     assert entries_by_id["e1"]["status"] == "active"
     assert entries_by_id["e2"]["status"] == "eliminated"
     assert entries_by_id["e2"]["eliminated_week"] == 5
+
+
+# ---------------------------------------------------------------------------
+# resolve_and_apply
+# ---------------------------------------------------------------------------
+
+def _survivor_pool_fixture():
+    """One survivor pool, one competition, one fully-final week-1 game: team-A
+    (home) beats team-B (away) 20-10. e1 picked team-A (survives), e2 picked
+    team-B (eliminated)."""
+    return FakeSb({
+        "pool_competitions": [
+            {"pool_id": "pool1", "competition_id": "comp1"},
+        ],
+        "teams": [
+            {"id": "team-A", "competition_id": "comp1", "ext_id": "T-A"},
+            {"id": "team-B", "competition_id": "comp1", "ext_id": "T-B"},
+        ],
+        "game_results": [
+            {"espn_game_id": "g1", "week": 1, "competition_id": "comp1",
+             "home_team_id": "T-A", "away_team_id": "T-B",
+             "home_score": 20, "away_score": 10},
+        ],
+        "survivor_entries": [
+            {"id": "e1", "pool_id": "pool1", "member_id": "m1",
+             "status": "active", "eliminated_week": None},
+            {"id": "e2", "pool_id": "pool1", "member_id": "m2",
+             "status": "active", "eliminated_week": None},
+        ],
+        "survivor_picks": [
+            {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A",
+             "espn_game_id": "g1", "result": "pending"},
+            {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B",
+             "espn_game_id": "g1", "result": "pending"},
+        ],
+    })
+
+
+def test_resolve_and_apply_final_week_applies_win_and_loss():
+    sb = _survivor_pool_fixture()
+    pool = {"id": "pool1", "survivor_config": {}}
+
+    result = resolve_and_apply(sb, pool)
+
+    assert result[1]["e1"]["status"] == "active"
+    assert result[1]["e2"]["status"] == "eliminated"
+    assert result[1]["e2"]["eliminated_week"] == 1
+
+    entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
+    assert entries_by_id["e1"]["status"] == "active"
+    assert entries_by_id["e1"]["eliminated_week"] is None
+    assert entries_by_id["e2"]["status"] == "eliminated"
+    assert entries_by_id["e2"]["eliminated_week"] == 1
+
+    picks_by_entry = {r["entry_id"]: r for r in sb.tables["survivor_picks"]}
+    assert picks_by_entry["e1"]["result"] == "win"
+    assert picks_by_entry["e2"]["result"] == "loss"
+
+
+def test_resolve_and_apply_is_idempotent_on_second_call():
+    # resolve_week only grades entries still "active", so an entry eliminated
+    # on the first call correctly drops out of the second call's resolution
+    # dict -- that's not oscillation, since its DB row is left untouched.
+    # Idempotence means the *DB state* after two calls matches the state
+    # after one, not that the raw resolution payload is byte-identical.
+    sb = _survivor_pool_fixture()
+    pool = {"id": "pool1", "survivor_config": {}}
+
+    resolve_and_apply(sb, pool)
+    entries_after_first = {r["id"]: dict(r) for r in sb.tables["survivor_entries"]}
+    picks_after_first = {r["entry_id"]: dict(r) for r in sb.tables["survivor_picks"]}
+
+    resolve_and_apply(sb, pool)
+    entries_after_second = {r["id"]: dict(r) for r in sb.tables["survivor_entries"]}
+    picks_after_second = {r["entry_id"]: dict(r) for r in sb.tables["survivor_picks"]}
+
+    assert entries_after_second == entries_after_first
+    assert picks_after_second == picks_after_first
+
+    assert entries_after_second["e1"]["status"] == "active"
+    assert entries_after_second["e2"]["status"] == "eliminated"
+    assert entries_after_second["e2"]["eliminated_week"] == 1

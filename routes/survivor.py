@@ -9,14 +9,14 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, render_template, session
 from routes.auth import login_required
 from services.supabase_client import get_service_client
-from services.competitions import get_pool_competition_ids, get_team, teams_by_ref
-from services.survivor import ET, is_locked, buyback_option, resolve_week
+from services.competitions import get_pool_competition_ids, get_team
+from services.survivor import ET, is_locked, buyback_option
 from services.survivor_data import (
     get_or_create_entry,
     submit_pick,
     record_buyback,
     board_data,
-    apply_resolution,
+    resolve_week_for_pool,
     TeamAlreadyUsed,
 )
 
@@ -335,7 +335,10 @@ def resolve_now(pool_id):
     function of the current entries/picks/games rows, so calling it again
     after more games go final (or with nothing changed at all) just re-derives
     and re-writes the same state -- safe to use as a manual "nudge" alongside
-    whatever cron eventually calls resolve_week from services.survivor."""
+    the automatic resolve_and_apply() the ESPN sync path (cron + throttled
+    poll) already runs on every sync. Delegates to
+    services.survivor_data.resolve_week_for_pool, the same routine that path
+    uses."""
     sb = get_service_client()
     pool, _viewer, err = _guard(sb, pool_id, session["user_id"], creator_only=True)
     if err:
@@ -350,51 +353,7 @@ def resolve_now(pool_id):
     except (TypeError, ValueError):
         return jsonify({"error": "week must be an integer"}), 400
 
-    config = pool.get("survivor_config") or {}
-    mercy_after_week = config.get("mercy_after_week", 7)
-
-    entries = sb.table("survivor_entries").select("*").eq("pool_id", pool_id).execute().data
-    entry_ids = [e["id"] for e in entries]
-
-    picks = []
-    if entry_ids:
-        picks = sb.table("survivor_picks").select("*").in_(
-            "entry_id", entry_ids
-        ).eq("week", week).execute().data
-
-    team_refs = {p["team_ref"] for p in picks if p.get("team_ref")}
-    teams = teams_by_ref(sb, team_refs)
-
-    picks_by_entry = {}
-    espn_game_ids = set()
-    for p in picks:
-        team = teams.get(p["team_ref"])
-        if not team:
-            continue
-        picks_by_entry[p["entry_id"]] = {
-            "week": p["week"],
-            "team_ext_id": team.get("ext_id"),
-            "espn_game_id": p.get("espn_game_id"),
-        }
-        if p.get("espn_game_id"):
-            espn_game_ids.add(p["espn_game_id"])
-
-    games_by_espn_id = {}
-    if espn_game_ids:
-        games = sb.table("game_results").select("*").in_(
-            "espn_game_id", list(espn_game_ids)
-        ).eq("week", week).execute().data
-        for g in games:
-            # Only fully final games count -- a row with no score yet (e.g. a
-            # scheduled-but-unplayed game already ingested for kickoff_at)
-            # must be treated as "not final" so resolve_week defers the whole
-            # week rather than grading on a missing result.
-            if g.get("home_score") is None or g.get("away_score") is None:
-                continue
-            games_by_espn_id[g["espn_game_id"]] = g
-
-    resolution = resolve_week(entries, picks_by_entry, games_by_espn_id, week, mercy_after_week)
-    apply_resolution(sb, resolution, week)
+    resolution = resolve_week_for_pool(sb, pool, week)
     return jsonify({"ok": True, "resolution": resolution})
 
 

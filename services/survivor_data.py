@@ -1,11 +1,17 @@
 """Supabase data layer for survivor pools: entries, picks, buybacks, and the
-batched board read. Pure DB access -- no network/ESPN calls, no pick-lock or
-resolution logic (that lives in services/survivor.py). Takes an explicit `sb`
-client so every function is trivial to unit-test with a fake double."""
+batched board read. Mostly pure DB access -- pick-lock and week-grading logic
+lives in services/survivor.py -- except resolve_week_for_pool/resolve_and_apply,
+which orchestrate loading a week's entries/picks/games, calling resolve_week,
+and writing the result, so the commissioner's manual "resolve now" route and
+the ESPN-sync auto-resolve path share one implementation. Takes an explicit
+`sb` client so every function is trivial to unit-test with a fake double."""
 try:
     from postgrest.exceptions import APIError
 except ImportError:  # pragma: no cover - postgrest always ships with supabase-py
     APIError = None
+
+from services.competitions import get_pool_competition_ids, teams_by_ref
+from services.survivor import resolve_week
 
 UNIQUE_VIOLATION = "23505"
 
@@ -149,3 +155,81 @@ def apply_resolution(sb, resolution, week):
             "status": outcome["status"],
             "eliminated_week": outcome["eliminated_week"],
         }).eq("id", entry_id).execute()
+
+
+def resolve_week_for_pool(sb, pool, week):
+    """Load a survivor pool's entries/picks/games for one `week`, translate
+    team_ref -> ext_id, treat a game as final only when both scores are
+    non-null, then call resolve_week() and write the result. Shared by the
+    commissioner's manual `/survivor/resolve` route and resolve_and_apply()
+    below (the ESPN-sync auto-resolve path) so there's exactly one place that
+    knows how to grade a week. Idempotent -- depends only on current DB
+    state. Returns the resolution dict."""
+    pool_id = pool["id"]
+    config = pool.get("survivor_config") or {}
+    mercy_after_week = config.get("mercy_after_week", 7)
+
+    entries = sb.table("survivor_entries").select("*").eq("pool_id", pool_id).execute().data
+    entry_ids = [e["id"] for e in entries]
+
+    picks = []
+    if entry_ids:
+        picks = sb.table("survivor_picks").select("*").in_(
+            "entry_id", entry_ids
+        ).eq("week", week).execute().data
+
+    team_refs = {p["team_ref"] for p in picks if p.get("team_ref")}
+    teams = teams_by_ref(sb, team_refs)
+
+    picks_by_entry = {}
+    espn_game_ids = set()
+    for p in picks:
+        team = teams.get(p["team_ref"])
+        if not team:
+            continue
+        picks_by_entry[p["entry_id"]] = {
+            "week": p["week"],
+            "team_ext_id": team.get("ext_id"),
+            "espn_game_id": p.get("espn_game_id"),
+        }
+        if p.get("espn_game_id"):
+            espn_game_ids.add(p["espn_game_id"])
+
+    games_by_espn_id = {}
+    if espn_game_ids:
+        games = sb.table("game_results").select("*").in_(
+            "espn_game_id", list(espn_game_ids)
+        ).eq("week", week).execute().data
+        for g in games:
+            # Only fully final games count -- a row with no score yet (e.g. a
+            # scheduled-but-unplayed game already ingested for kickoff_at)
+            # must be treated as "not final" so resolve_week defers the whole
+            # week rather than grading on a missing result.
+            if g.get("home_score") is None or g.get("away_score") is None:
+                continue
+            games_by_espn_id[g["espn_game_id"]] = g
+
+    resolution = resolve_week(entries, picks_by_entry, games_by_espn_id, week, mercy_after_week)
+    apply_resolution(sb, resolution, week)
+    return resolution
+
+
+def resolve_and_apply(sb, pool):
+    """Resolve every week that has games for this survivor pool's linked
+    competition(s) and apply results. Meant to be called after every ESPN
+    sync (cron + throttled poll) -- weeks that aren't fully decided yet are
+    natural no-ops via resolve_week's defer-the-whole-week behavior, and
+    already-resolved weeks just re-derive and re-write the same state, so
+    it's safe and idempotent to call unconditionally. Returns
+    {week: resolution} for every week touched."""
+    pool_id = pool["id"]
+    comp_ids = get_pool_competition_ids(sb, pool_id)
+    if not comp_ids:
+        return {}
+
+    games = sb.table("game_results").select("week").in_(
+        "competition_id", comp_ids
+    ).execute().data
+    weeks = sorted({g["week"] for g in games if g.get("week") is not None})
+
+    return {week: resolve_week_for_pool(sb, pool, week) for week in weeks}
