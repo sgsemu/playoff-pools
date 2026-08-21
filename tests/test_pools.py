@@ -194,6 +194,63 @@ def test_create_pool_inherits_stage_weighted_scoring(mock_sb, authed_client):
 
 
 @patch("routes.pools.get_service_client")
+def test_create_survivor_pool_seeds_config_and_creator_entry(mock_sb, authed_client):
+    """type='survivor' stores the HBK default survivor_config on the pool row
+    and creates the creator's survivor_entries row (via
+    services.survivor_data.get_or_create_entry, exercised for real -- not
+    mocked -- so this also proves the entry insert shape is right)."""
+    captured = {"pools": None}
+    tables = {"survivor_entries": []}
+
+    def _side_effect(name):
+        t = MagicMock()
+        if name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = []
+        elif name == "pools":
+            def _ins(row):
+                captured["pools"] = row
+                r = MagicMock()
+                r.execute.return_value.data = [{**row, "id": "pool-1"}]
+                return r
+            t.insert.side_effect = _ins
+        elif name == "pool_members":
+            t.insert.return_value.execute.return_value.data = [{"id": "member-1"}]
+        elif name == "survivor_entries":
+            def _select(cols="*"):
+                q = MagicMock()
+                q.eq.return_value.eq.return_value.execute.return_value.data = tables["survivor_entries"]
+                return q
+
+            def _ins(row):
+                tables["survivor_entries"].append(row)
+                r = MagicMock()
+                r.execute.return_value.data = [row]
+                return r
+            t.select.side_effect = _select
+            t.insert.side_effect = _ins
+        return t
+
+    mock_sb.return_value.table.side_effect = _side_effect
+
+    resp = authed_client.post("/pool/create", data={
+        "name": "Survivor Pool", "type": "survivor",
+    }, follow_redirects=False)
+
+    assert resp.status_code in (302, 303)
+    assert captured["pools"]["survivor_config"] == {
+        "tie_is_win": True,
+        "sunday_lock_et": "13:00",
+        "mercy_after_week": 7,
+        "final_week": 18,
+        "regular_buyback": {"weeks": [1, 6], "limit": None, "deadline": "sunday_1pm"},
+        "super_buyback": {"weeks": [7, 17], "limit": 1, "fee": 500, "deadline": "friday_2359_et"},
+    }
+    assert tables["survivor_entries"] == [
+        {"pool_id": "pool-1", "member_id": "member-1", "status": "active"}
+    ]
+
+
+@patch("routes.pools.get_service_client")
 def test_join_pool_via_invite(mock_sb, authed_client):
     mock_table = MagicMock()
     mock_sb.return_value.table.return_value = mock_table

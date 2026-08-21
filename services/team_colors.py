@@ -51,7 +51,7 @@ def team_color(league, team_id):
 
 # ESPN CDN path segment per competition league. Soccer-based competitions
 # (e.g. world_cup) live under "soccer"; pro leagues use their own slug.
-_LOGO_PATH = {"nba": "nba", "nhl": "nhl", "world_cup": "soccer"}
+_LOGO_PATH = {"nba": "nba", "nhl": "nhl", "world_cup": "soccer", "nfl": "nfl"}
 
 
 def team_logo_url(league, ext_id):

@@ -4,6 +4,7 @@ os.environ.setdefault("SUPABASE_KEY", "test-key")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 from routes.scores import build_standings_view
 
 _WC_STAGES_JSON = [
@@ -136,3 +137,64 @@ def test_recalculate_stage_weighted_pool(mock_sb):
     mock_sb.return_value.table.side_effect = table
     from routes.scores import recalculate_standings
     recalculate_standings("p1")   # 203 won a group match (3) + group winner (2) = 5
+
+
+# ---------------------------------------------------------------------------
+# maybe_auto_sync -- task-10 regression: survivor pools have no draft phase
+# and must be resolved regardless of draft_status. A plain MagicMock would
+# happily return every row through a filtered `.eq("draft_status", ...)`
+# chain too (it doesn't actually filter), which would mask the bug -- so
+# this fake really applies the filter, the way supabase-py's builder does.
+# ---------------------------------------------------------------------------
+
+class _PoolsQuery:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def select(self, cols="*"):
+        return self
+
+    def eq(self, col, val):
+        self._rows = [r for r in self._rows if r.get(col) == val]
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self._rows)
+
+
+class _PoolsClient:
+    """Minimal supabase double covering only the pools table -- enough to
+    prove the real selection predicate used by maybe_auto_sync."""
+    def __init__(self, pools):
+        self._pools = pools
+
+    def table(self, name):
+        assert name == "pools", f"unexpected table {name!r}"
+        return _PoolsQuery(self._pools)
+
+
+@patch("routes.scores.get_service_client")
+def test_maybe_auto_sync_resolves_survivor_pool_regardless_of_draft_status(mock_client):
+    import routes.scores as scores_mod
+    scores_mod._last_auto_sync_at = 0.0  # reset the process-level throttle
+
+    pools = [
+        {"id": "surv-pending", "type": "survivor", "draft_status": "pending"},
+        {"id": "draft-complete", "type": "draft", "draft_status": "complete"},
+        {"id": "draft-pending", "type": "draft", "draft_status": "pending"},
+    ]
+    mock_client.return_value = _PoolsClient(pools)
+
+    with patch("routes.scores._sync_completed_games", return_value=3), \
+         patch("services.survivor_data.resolve_and_apply") as mock_resolve, \
+         patch("routes.scores.recalculate_standings") as mock_recalc:
+        new_count = scores_mod.maybe_auto_sync(throttle_seconds=0)
+
+    assert new_count == 3
+    # Pending survivor pool: resolve_and_apply must run even though its
+    # draft_status is still 'pending' (survivor pools have no draft phase).
+    mock_resolve.assert_called_once()
+    assert mock_resolve.call_args[0][1]["id"] == "surv-pending"
+    # Complete draft pool: recalculate_standings runs as before.
+    mock_recalc.assert_called_once_with("draft-complete")
+    # Pending draft pool: neither path fires (no draft, no standings yet).

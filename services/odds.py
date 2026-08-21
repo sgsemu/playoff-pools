@@ -13,6 +13,7 @@ Caesars referral link.
 Public API:
     fetch_odds(league)         -> list[event_dict]   (raw Odds API events)
     best_by_outcome(event)     -> {outcome_name: {price, book_key, book_name}}
+    best_spread_by_team(event) -> {team_name: point}
     enrich_calendar_with_best_odds(calendar)         -> mutates in place
     get_event_for_game(game)   -> matching Odds API event or None
 """
@@ -33,6 +34,7 @@ _SPORT_KEY = {
     "nba": "basketball_nba",
     "nhl": "icehockey_nhl",
     "world_cup": "soccer_fifa_world_cup",
+    "nfl": "americanfootball_nfl",
 }
 
 
@@ -84,7 +86,7 @@ def fetch_odds(league):
             params={
                 "apiKey": api_key,
                 "regions": "us",
-                "markets": "h2h",
+                "markets": "h2h,spreads",
                 "oddsFormat": "american",
                 "bookmakers": bookmaker_keys_param(),
             },
@@ -132,6 +134,30 @@ def best_by_outcome(event):
         n: {"price": v[1], "book_key": v[2], "book_name": v[3]}
         for n, v in best.items()
     }
+
+
+def best_spread_by_team(event):
+    """For one Odds API event, return {team_name: point} picking the bookmaker
+    with the highest decimal price for each team's spread outcome (mirrors
+    best_by_outcome, but reads the 'spreads' market and returns the point
+    instead of the price). The favorite's point is negative, the underdog's
+    positive. Teams with no spreads market on any bookmaker are omitted."""
+    best = {}  # name -> (decimal, point)
+    for book in event.get("bookmakers", []) or []:
+        for market in book.get("markets", []) or []:
+            if market.get("key") != "spreads":
+                continue
+            for outcome in market.get("outcomes", []) or []:
+                name = outcome.get("name")
+                price = outcome.get("price")
+                point = outcome.get("point")
+                d = _decimal(price)
+                if name is None or d is None or point is None:
+                    continue
+                cur = best.get(name)
+                if cur is None or d > cur[0]:
+                    best[name] = (d, point)
+    return {n: v[1] for n, v in best.items()}
 
 
 def _event_pairs_index(events):

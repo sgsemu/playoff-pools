@@ -408,6 +408,8 @@ def fetch_competition_results(competition, dates=None):
             "kickoff_full": kickoff_full,
             "stage": resolve_stage(competition["league"], ev.get("season", {}).get("slug", "")),
             "is_draw": is_draw,
+            "week": (ev.get("week") or {}).get("number"),
+            "kickoff_at": ev.get("date"),
         })
     return out
 

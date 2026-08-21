@@ -25,6 +25,7 @@ def create_app():
     from routes.draft import draft_bp
     from routes.auction import auction_bp
     from routes.roster import roster_bp
+    from routes.survivor import survivor_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(pools_bp)
@@ -32,6 +33,7 @@ def create_app():
     app.register_blueprint(draft_bp)
     app.register_blueprint(auction_bp)
     app.register_blueprint(roster_bp)
+    app.register_blueprint(survivor_bp)
 
     return app
 

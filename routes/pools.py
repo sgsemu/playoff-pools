@@ -5,9 +5,21 @@ from services.supabase_client import get_service_client
 from services.easter_eggs import wc_slot
 from services.competitions import get_pool_competition_ids
 from services.espn_api import fetch_finals_complete
+from services.survivor_data import get_or_create_entry
 from routes.scores import build_standings_view
 
 pools_bp = Blueprint("pools", __name__)
+
+# HBK Dads' Survivor 2026 defaults, seeded verbatim onto every survivor pool
+# at creation time. Not currently form-configurable -- one house ruleset.
+SURVIVOR_CONFIG_DEFAULTS = {
+    "tie_is_win": True,
+    "sunday_lock_et": "13:00",
+    "mercy_after_week": 7,
+    "final_week": 18,
+    "regular_buyback": {"weeks": [1, 6], "limit": None, "deadline": "sunday_1pm"},
+    "super_buyback": {"weeks": [7, 17], "limit": 1, "fee": 500, "deadline": "friday_2359_et"},
+}
 
 
 @pools_bp.route("/")
@@ -212,6 +224,7 @@ def create_pool():
     inherited = _inherited_scoring_config(sb, competition_ids)
     scoring_config = inherited if inherited is not None else _build_scoring_config(request.form)
     auction_config = _build_auction_config(request.form) if pool_type == "auction" else {}
+    survivor_config = SURVIVOR_CONFIG_DEFAULTS if pool_type == "survivor" else {}
 
     pool = sb.table("pools").insert({
         "creator_id": session["user_id"],
@@ -223,17 +236,21 @@ def create_pool():
         "payout_description": request.form.get("payout_description", ""),
         "scoring_config": scoring_config,
         "auction_config": auction_config,
+        "survivor_config": survivor_config,
         "draft_mode": request.form.get("draft_mode", "live"),
         "timer_seconds": int(request.form.get("timer_seconds", 60)),
         "season_year": 2026
     }).execute().data[0]
 
     # Add creator as a member
-    sb.table("pool_members").insert({
+    creator_member = sb.table("pool_members").insert({
         "pool_id": pool["id"],
         "user_id": session["user_id"],
         "role": "creator"
-    }).execute()
+    }).execute().data[0]
+
+    if pool_type == "survivor":
+        get_or_create_entry(sb, pool["id"], creator_member["id"])
 
     if competition_ids:
         sb.table("pool_competitions").insert(
@@ -353,11 +370,15 @@ def join_pool(invite_code):
                 "error",
             )
             return redirect("/dashboard")
-        sb.table("pool_members").insert({
+        member = sb.table("pool_members").insert({
             "pool_id": pool["id"],
             "user_id": session["user_id"],
             "role": "member"
-        }).execute()
+        }).execute().data[0]
+
+        if pool.get("type") == "survivor":
+            get_or_create_entry(sb, pool["id"], member["id"])
+
         flash(f"You joined {pool['name']}!", "success")
     else:
         flash(f"You're already in {pool['name']}.", "error")

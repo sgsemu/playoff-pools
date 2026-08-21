@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Survivor - {{ pool.name }}{% endblock %}
+{% block content %}
+<div class="survivor-page">
+    <h1>{{ pool.name }} — Survivor</h1>
+    <p class="section-subtitle survivor-board-header">
+        <b>{{ alive_count }} of {{ total_count }} alive</b>
+        · Week {{ current_week }} picks
+        {% if current_week_locked %}locked{% else %}lock Sun 1:00 PM ET{% endif %}
+        · <a href="/pool/{{ pool_id }}/survivor/pick">Make your pick →</a>
+    </p>
+
+    {% if board.entries %}
+    <div class="survivor-board-wrapper">
+        <table class="survivor-grid">
+            <thead>
+                <tr>
+                    <th class="survivor-grid-name">Player</th>
+                    {% for w in range(1, current_week + 1) %}
+                    <th>W{{ w }}</th>
+                    {% endfor %}
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in board.entries %}
+                <tr data-entry-id="{{ entry.id }}">
+                    <td class="survivor-grid-name">{{ entry.display_name }}</td>
+                    {% for w in range(1, current_week + 1) %}
+                    {% set pick = board.picks.get(entry.id, {}).get(w) %}
+                    {% set bb = entry.buybacks | selectattr('week', 'equalto', w) | first %}
+                    {% set is_own_entry = viewer_entry_id and entry.id == viewer_entry_id %}
+                    {% if not week_locked.get(w, False) and not is_own_entry %}
+                    <td class="sb-cell sb-locked" title="Picks for this week are hidden until lock">🔒</td>
+                    {% elif pick %}
+                    <td class="sb-cell sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
+                        {{ team_abbrs.get(pick.team_ref, pick.team_ref) }}
+                        {% if pick.set_by == 'commissioner' %}<sup class="sb-commish" title="Set by commissioner">C</sup>{% endif %}
+                        {% if bb %}<sup class="sb-buyback" title="Buyback">↩</sup>{% endif %}
+                    </td>
+                    {% elif bb %}
+                    <td class="sb-cell sb-buyback-cell" title="Buyback">↩</td>
+                    {% else %}
+                    <td class="sb-cell sb-none">—</td>
+                    {% endif %}
+                    {% endfor %}
+                    <td class="sb-status">
+                        {% if entry.status == 'active' %}
+                        <span class="st-alive">ALIVE</span>
+                        {% else %}
+                        <span class="st-out">OUT · Wk {{ entry.eliminated_week }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>No entries yet.</p></div>
+    {% endif %}
+
+    {% if commish %}
+    {% include "pool/_survivor_commish.html" %}
+    {% endif %}
+</div>
+{% endblock %}

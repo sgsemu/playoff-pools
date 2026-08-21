@@ -782,3 +782,92 @@ a.best-line-book:hover { background: #353550; }
 .start-auction-row .section-title {
     font-size: 1rem; margin-top: 0;
 }
+
+/* Survivor status board (Task 12): members x weeks grid. */
+.survivor-board-header { margin-bottom: 10px; }
+.survivor-board-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.survivor-grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+.survivor-grid th, .survivor-grid td {
+    border: 1px solid #2a2a3e; padding: 6px 10px; text-align: center; white-space: nowrap;
+}
+.survivor-grid th {
+    font-weight: 600; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.survivor-grid-name { text-align: left !important; font-weight: 600; }
+.sb-win { background: rgba(74, 222, 128, 0.18); color: #4ade80; }
+.sb-loss { background: rgba(248, 113, 113, 0.18); color: #f87171; text-decoration: line-through; }
+.sb-pending { background: rgba(250, 204, 21, 0.12); color: #facc15; font-style: italic; }
+.sb-none { color: #555; }
+.sb-locked {
+    color: #888; font-style: italic;
+    background: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(136, 136, 136, 0.08) 4px, rgba(136, 136, 136, 0.08) 8px);
+}
+.sb-buyback-cell { color: #facc15; font-weight: 700; }
+.sb-commish, .sb-buyback { font-size: 9px; margin-left: 1px; vertical-align: super; }
+.sb-commish { color: #c084fc; }
+.sb-buyback { color: #facc15; }
+.sb-status { white-space: nowrap; }
+.st-alive { color: #4ade80; font-weight: 700; }
+
+/* Survivor weekly pick screen (Task 13). */
+.spick-back-link { display: inline-block; font-size: 13px; color: #7c6ef0; text-decoration: none; margin-bottom: 12px; }
+.spick-back-link:hover { text-decoration: underline; }
+.spick-lockbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border: 1px solid #2a2a3e; border-left: 4px solid #7c6ef0;
+    border-radius: 8px; margin-bottom: 6px; background: #1a1a2e; font-size: 13px;
+}
+.spick-lockbar b { color: #b9aeff; }
+.spick-rulenote { font-size: 12px; color: #888; margin: 2px 0 16px; }
+.spick-game-meta { font-size: 11px; color: #888; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.spick-matchup { display: flex; align-items: stretch; gap: 8px; }
+.spick-team {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    border: 1px solid #2a2a3e; border-radius: 8px; padding: 10px 14px;
+    background: #1a1a2e; color: #e0e0e0; font: inherit; cursor: pointer; text-align: left;
+}
+.spick-team:hover:not(:disabled) { border-color: #4ade80; }
+.spick-team.spick-sel { border-color: #4ade80; background: rgba(74, 222, 128, 0.14); box-shadow: 0 0 0 1px #4ade80 inset; }
+.spick-team.spick-used, .spick-team.spick-locked { opacity: 0.4; cursor: not-allowed; }
+.spick-team.spick-used .spick-tname { text-decoration: line-through; }
+.spick-team:disabled { pointer-events: none; }
+.spick-logo { width: 28px; height: 28px; object-fit: contain; flex: none; }
+.spick-tname { flex: 1; font-weight: 600; font-size: 14px; }
+.spick-vs { display: flex; align-items: center; color: #555; font-size: 11px; padding: 0 2px; }
+.spick-tag { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.spick-badge { font-size: 10px; color: #facc15; font-weight: 700; margin-left: 6px; }
+.spick-spread { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; text-align: right; white-space: nowrap; }
+.spick-spread.fav { color: #4ade80; }
+.spick-spread.dog { color: #9db4d0; }
+.spick-savebar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 16px; padding: 12px 14px; border-top: 1px solid #2a2a3e; font-size: 13px;
+}
+.spick-saved { color: #4ade80; font-weight: 600; }
+.spick-unsaved { color: #facc15; font-weight: 600; }
+.spick-error { color: #f87171; font-weight: 600; }
+.st-out { color: #f87171; font-weight: 700; }
+
+/* Commissioner panel (survivor board) */
+.commish-panel {
+    margin-top: 28px; padding: 16px; border: 1px solid #2a2a3e; border-radius: 8px; background: #15152a;
+}
+.commish-hint { color: #888; font-size: 0.85rem; margin: 2px 0 12px; }
+.commish-group { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid #2a2a3e; }
+.commish-group:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.commish-group-title { font-size: 14px; color: #b9aeff; margin: 0 0 10px; }
+.commish-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.commish-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #888; }
+.commish-row select, .commish-row input {
+    padding: 8px 10px; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 6px;
+    color: #e0e0e0; font-size: 13px; min-width: 140px;
+}
+.commish-row select:focus, .commish-row input:focus { outline: none; border-color: #7c6ef0; }
+/* Override the global .btn-primary { width: 100% } so buttons stay compact
+   next to the selects/inputs instead of forcing their own full-width row. */
+.commish-row .btn { width: auto; flex-shrink: 0; }
+.commish-note {
+    display: block; width: 100%; margin-top: 8px; padding: 8px 10px; background: #1a1a2e;
+    border: 1px solid #2a2a3e; border-radius: 6px; color: #e0e0e0; font-size: 13px;
+}
+.commish-error { color: #f87171; font-size: 12px; margin-top: 8px; }
