@@ -59,5 +59,9 @@
     {% else %}
     <div class="empty-state"><p>No entries yet.</p></div>
     {% endif %}
+
+    {% if commish %}
+    {% include "pool/_survivor_commish.html" %}
+    {% endif %}
 </div>
 {% endblock %}

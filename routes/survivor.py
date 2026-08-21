@@ -9,7 +9,12 @@ from datetime import datetime, time
 from flask import Blueprint, request, jsonify, render_template, session
 from routes.auth import login_required
 from services.supabase_client import get_service_client
-from services.competitions import get_pool_competition_ids, get_team, teams_by_ref
+from services.competitions import (
+    get_pool_competition_ids,
+    get_team,
+    teams_by_ref,
+    get_draftable_teams,
+)
 from services.survivor import ET, is_locked, buyback_option
 from services.survivor_data import (
     get_or_create_entry,
@@ -316,6 +321,86 @@ def survivor_pick_json(pool_id):
     return jsonify(_pick_board_data(sb, pool_id, member))
 
 
+def _commish_panel_data(sb, pool_id, board, current_week):
+    """Everything the commissioner panel needs, in a fixed number of queries
+    independent of member/entry count (pool_members, users, teams,
+    game_results -- four reads total, none per-member/per-cell):
+
+    - every pool member (not just those with a survivor_entries row --
+      someone who hasn't picked yet still needs to show up in the Assign
+      Pick dropdown), each tagged with their entry's status and the teams
+      they've already used (derived from `board["picks"]`, already loaded
+      by the caller -- no extra query per entry);
+    - every team the pool can pick from, for the team dropdown;
+    - each week's games as (team_ref, espn_game_id) pairs, so the client
+      can build a legal assign-pick request without a round trip.
+    """
+    member_rows = sb.table("pool_members").select("*").eq(
+        "pool_id", pool_id
+    ).execute().data
+    user_ids = [m["user_id"] for m in member_rows]
+    users = sb.table("users").select("id,display_name").in_(
+        "id", user_ids
+    ).execute().data if user_ids else []
+    name_by_user = {u["id"]: u.get("display_name") or "?" for u in users}
+
+    entry_by_member = {e["member_id"]: e for e in board["entries"]}
+    members_view = []
+    for m in member_rows:
+        entry = entry_by_member.get(m["id"])
+        used_teams = sorted({
+            p["team_ref"] for p in board["picks"].get(entry["id"], {}).values()
+            if p.get("team_ref")
+        }) if entry else []
+        members_view.append({
+            "member_id": m["id"],
+            "display_name": name_by_user.get(m["user_id"], "?"),
+            "entry_id": entry["id"] if entry else None,
+            "status": entry["status"] if entry else "active",
+            "eliminated_week": entry.get("eliminated_week") if entry else None,
+            "used_teams": used_teams,
+        })
+    members_view.sort(key=lambda m: (m["display_name"] or "").lower())
+
+    comp_ids = get_pool_competition_ids(sb, pool_id)
+    teams = get_draftable_teams(sb, pool_id)
+    teams_by_id = {
+        t["id"]: {
+            "team_ref": t["id"],
+            "name": t.get("name"),
+            "abbreviation": t.get("abbreviation"),
+        }
+        for t in teams
+    }
+    ext_to_ref = {t["ext_id"]: t["id"] for t in teams}
+
+    games_rows = sb.table("game_results").select(
+        "espn_game_id, week, home_team_id, away_team_id"
+    ).in_("competition_id", comp_ids).execute().data if comp_ids else []
+    games_by_week = {}
+    for g in games_rows:
+        week = g.get("week")
+        if week is None:
+            continue
+        refs = [
+            r for r in (ext_to_ref.get(g.get("home_team_id")), ext_to_ref.get(g.get("away_team_id")))
+            if r
+        ]
+        if not refs:
+            continue
+        games_by_week.setdefault(week, []).append({
+            "espn_game_id": g.get("espn_game_id"),
+            "team_refs": refs,
+        })
+
+    return {
+        "members": members_view,
+        "teams": teams_by_id,
+        "games_by_week": games_by_week,
+        "current_week": current_week,
+    }
+
+
 @survivor_bp.route("/pool/<pool_id>/survivor")
 @login_required
 def survivor_board(pool_id):
@@ -379,12 +464,20 @@ def survivor_board(pool_id):
 
     alive_count = sum(1 for e in data["entries"] if e["status"] == "active")
 
+    # Commissioner panel data is only ever assembled for the pool's creator
+    # -- everyone else gets `commish=None` and the template omits the panel
+    # entirely (mirrors auction_room.html's `pool.creator_id ==
+    # session.get('user_id')` gate).
+    is_creator = pool["creator_id"] == session["user_id"]
+    commish = _commish_panel_data(sb, pool_id, data, current_week) if is_creator else None
+
     return render_template(
         "pool/survivor_board.html",
         pool=pool, pool_id=pool_id, board=data, current_week=current_week,
         team_abbrs=team_abbrs, current_week_locked=current_week_locked,
         week_locked=week_locked, viewer_entry_id=viewer_entry_id,
         alive_count=alive_count, total_count=len(data["entries"]),
+        commish=commish,
     )
 
 

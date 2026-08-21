@@ -678,6 +678,42 @@ def test_survivor_pick_view_renders_logo_spread_and_used_team(mock_sb, mock_fetc
     assert "used W2" in html
 
 
+# ---------------------------------------------------------------------------
+# GET board (Task 14): commissioner panel renders only for the pool creator.
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_shows_commish_panel_to_creator_only(mock_sb, authed_client):
+    tables = _base_tables(creator_id="test-uuid")
+    tables["pool_members"].append(
+        {"id": "m2", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    tables["users"] = [
+        {"id": "test-uuid", "display_name": "Commish"},
+        {"id": "member-uuid", "display_name": "Member Two"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    # Creator (session user_id == pool creator_id == "test-uuid") sees the
+    # commissioner panel, with the Assign Pick and Settle Season controls.
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    creator_html = resp.get_data(as_text=True)
+    assert "commish-panel" in creator_html
+    assert "commish-assign-member" in creator_html
+    assert "Settle season" in creator_html
+
+    # A regular (non-creator) member does NOT see the panel at all.
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "member-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    member_html = resp.get_data(as_text=True)
+    assert "commish-panel" not in member_html
+    assert "Settle season" not in member_html
+
+
 @patch("services.odds.fetch_odds")
 @patch("routes.survivor.get_service_client")
 def test_survivor_pick_json_matches_view_data(mock_sb, mock_fetch_odds, authed_client):

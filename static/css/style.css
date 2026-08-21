@@ -847,3 +847,27 @@ a.best-line-book:hover { background: #353550; }
 .spick-unsaved { color: #facc15; font-weight: 600; }
 .spick-error { color: #f87171; font-weight: 600; }
 .st-out { color: #f87171; font-weight: 700; }
+
+/* Commissioner panel (survivor board) */
+.commish-panel {
+    margin-top: 28px; padding: 16px; border: 1px solid #2a2a3e; border-radius: 8px; background: #15152a;
+}
+.commish-hint { color: #888; font-size: 0.85rem; margin: 2px 0 12px; }
+.commish-group { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid #2a2a3e; }
+.commish-group:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.commish-group-title { font-size: 14px; color: #b9aeff; margin: 0 0 10px; }
+.commish-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.commish-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #888; }
+.commish-row select, .commish-row input {
+    padding: 8px 10px; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 6px;
+    color: #e0e0e0; font-size: 13px; min-width: 140px;
+}
+.commish-row select:focus, .commish-row input:focus { outline: none; border-color: #7c6ef0; }
+/* Override the global .btn-primary { width: 100% } so buttons stay compact
+   next to the selects/inputs instead of forcing their own full-width row. */
+.commish-row .btn { width: auto; flex-shrink: 0; }
+.commish-note {
+    display: block; width: 100%; margin-top: 8px; padding: 8px 10px; background: #1a1a2e;
+    border: 1px solid #2a2a3e; border-radius: 6px; color: #e0e0e0; font-size: 13px;
+}
+.commish-error { color: #f87171; font-size: 12px; margin-top: 8px; }

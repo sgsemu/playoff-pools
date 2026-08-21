@@ -1,0 +1,101 @@
+{# Creator-only manual-override panel for the survivor board. Included from
+   survivor_board.html only when `commish` is truthy (route only builds it
+   for the pool's creator). Wired to the Task 9 commissioner endpoints in
+   routes/survivor.py: assign-pick, buyback-for, set-status, resolve,
+   settle. #}
+<section class="commish-panel">
+    <h2 class="section-title">Commissioner Tools</h2>
+    <p class="commish-hint">Manual overrides — these bypass pick locks and buyback windows.</p>
+
+    <div class="commish-group">
+        <h3 class="commish-group-title">Assign Pick</h3>
+        <div class="commish-row">
+            <label>Member
+                <select id="commish-assign-member" onchange="commishUpdateTeamOptions()">
+                    {% for m in commish.members %}
+                    <option value="{{ m.member_id }}">{{ m.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Week
+                <input type="number" id="commish-assign-week" min="1" value="{{ commish.current_week }}" onchange="commishUpdateTeamOptions()">
+            </label>
+            <label>Team
+                <select id="commish-assign-team"></select>
+            </label>
+            <button class="btn btn-primary" type="button" onclick="commishAssignPick()">Assign</button>
+        </div>
+        <input type="text" id="commish-assign-note" class="commish-note" placeholder="Note (optional, e.g. &quot;texted it in&quot;)">
+        <div class="commish-error" id="commish-assign-error" hidden></div>
+    </div>
+
+    <div class="commish-group">
+        <h3 class="commish-group-title">Buyback</h3>
+        <div class="commish-row">
+            <label>Member
+                <select id="commish-buyback-member">
+                    {% for m in commish.members %}
+                    <option value="{{ m.member_id }}">{{ m.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Week
+                <input type="number" id="commish-buyback-week" min="1" value="{{ commish.current_week }}">
+            </label>
+            <label>Kind
+                <select id="commish-buyback-kind">
+                    <option value="regular">Regular</option>
+                    <option value="super">Super</option>
+                </select>
+            </label>
+            <label>Fee
+                <input type="number" id="commish-buyback-fee" min="0" placeholder="optional">
+            </label>
+            <button class="btn btn-primary" type="button" onclick="commishRecordBuyback()">Record buyback</button>
+        </div>
+        <div class="commish-error" id="commish-buyback-error" hidden></div>
+    </div>
+
+    <div class="commish-group">
+        <h3 class="commish-group-title">Eliminate / Reinstate</h3>
+        <div class="commish-row">
+            <label>Member
+                <select id="commish-status-member" onchange="commishSyncStatusButton()">
+                    {% for m in commish.members %}
+                    <option value="{{ m.member_id }}" data-status="{{ m.status }}">{{ m.display_name }} ({{ 'ALIVE' if m.status == 'active' else 'OUT' }})</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Eliminated week
+                <input type="number" id="commish-status-week" min="1" value="{{ commish.current_week }}">
+            </label>
+            <button class="btn btn-danger" type="button" id="commish-status-btn" onclick="commishToggleStatus()">Eliminate</button>
+        </div>
+        <div class="commish-error" id="commish-status-error" hidden></div>
+    </div>
+
+    <div class="commish-group">
+        <h3 class="commish-group-title">Resolver</h3>
+        <p class="commish-hint">Idempotent — safe to re-run for a week after more games go final.</p>
+        <div class="commish-row">
+            <label>Week
+                <input type="number" id="commish-resolve-week" min="1" value="{{ commish.current_week }}">
+            </label>
+            <button class="btn btn-secondary" type="button" onclick="commishResolveNow()">Re-run resolver</button>
+        </div>
+        <div class="commish-error" id="commish-resolve-error" hidden></div>
+    </div>
+
+    <div class="commish-group">
+        <h3 class="commish-group-title">Settle Season</h3>
+        <p class="commish-hint">Marks the pool complete and records every still-alive entry as a winner.</p>
+        <button class="btn btn-danger" type="button" onclick="commishSettleSeason()">Settle season</button>
+        <div class="commish-error" id="commish-settle-error" hidden></div>
+    </div>
+</section>
+
+<script>
+    const POOL_ID = {{ pool_id | tojson }};
+    const COMMISH_DATA = {{ commish | tojson }};
+</script>
+<script src="/static/js/survivor_commish.js"></script>
