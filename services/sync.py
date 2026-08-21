@@ -47,6 +47,8 @@ def sync_competition_results(sb, competition):
             "winner_team_id": game.get("winner_team_id"),
             "stage": game["stage"],
             "is_draw": game["is_draw"],
+            "week": game.get("week"),
+            "kickoff_at": game.get("kickoff_at"),
             "league": competition["league"],   # legacy column (NBA/NHL scoring)
             "round": 1,                          # legacy column, no longer authoritative
             "game_date": today_et().isoformat(),

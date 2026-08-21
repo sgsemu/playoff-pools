@@ -255,3 +255,26 @@ def test_fetch_live_games_filters_in_progress_and_tags_league():
         g.return_value = MagicMock(json=lambda: payload, raise_for_status=lambda: None)
         live = fetch_live_games(competitions)
     assert len(live) == 1 and live[0]["league"] == "world_cup"
+
+
+def test_fetch_competition_results_extracts_week_and_kickoff(monkeypatch):
+    from services import espn_api
+    payload = {"events": [{
+        "id": "401", "date": "2026-09-13T17:00Z",
+        "week": {"number": 2}, "season": {"type": 2, "slug": ""},
+        "competitions": [{
+            "status": {"type": {"state": "post", "completed": True, "shortDetail": "Final"}},
+            "competitors": [
+                {"homeAway": "home", "team": {"id": "1", "abbreviation": "ATL", "displayName": "Atlanta Falcons"}, "score": "20", "winner": True},
+                {"homeAway": "away", "team": {"id": "2", "abbreviation": "TB", "displayName": "Tampa Bay Buccaneers"}, "score": "10", "winner": False},
+            ],
+        }],
+    }]}
+    class R:
+        def raise_for_status(self): pass
+        def json(self): return payload
+    monkeypatch.setattr(espn_api.requests, "get", lambda *a, **k: R())
+    comp = {"espn_sport": "football", "espn_slug": "nfl", "league": "nfl", "event_filter": {"season_type": 2}}
+    g = espn_api.fetch_competition_results(comp)[0]
+    assert g["week"] == 2
+    assert g["kickoff_at"] == "2026-09-13T17:00Z"
