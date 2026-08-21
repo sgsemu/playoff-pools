@@ -808,4 +808,42 @@ a.best-line-book:hover { background: #353550; }
 .sb-buyback { color: #facc15; }
 .sb-status { white-space: nowrap; }
 .st-alive { color: #4ade80; font-weight: 700; }
+
+/* Survivor weekly pick screen (Task 13). */
+.spick-back-link { display: inline-block; font-size: 13px; color: #7c6ef0; text-decoration: none; margin-bottom: 12px; }
+.spick-back-link:hover { text-decoration: underline; }
+.spick-lockbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border: 1px solid #2a2a3e; border-left: 4px solid #7c6ef0;
+    border-radius: 8px; margin-bottom: 6px; background: #1a1a2e; font-size: 13px;
+}
+.spick-lockbar b { color: #b9aeff; }
+.spick-rulenote { font-size: 12px; color: #888; margin: 2px 0 16px; }
+.spick-game-meta { font-size: 11px; color: #888; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.spick-matchup { display: flex; align-items: stretch; gap: 8px; }
+.spick-team {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    border: 1px solid #2a2a3e; border-radius: 8px; padding: 10px 14px;
+    background: #1a1a2e; color: #e0e0e0; font: inherit; cursor: pointer; text-align: left;
+}
+.spick-team:hover:not(:disabled) { border-color: #4ade80; }
+.spick-team.spick-sel { border-color: #4ade80; background: rgba(74, 222, 128, 0.14); box-shadow: 0 0 0 1px #4ade80 inset; }
+.spick-team.spick-used, .spick-team.spick-locked { opacity: 0.4; cursor: not-allowed; }
+.spick-team.spick-used .spick-tname { text-decoration: line-through; }
+.spick-team:disabled { pointer-events: none; }
+.spick-logo { width: 28px; height: 28px; object-fit: contain; flex: none; }
+.spick-tname { flex: 1; font-weight: 600; font-size: 14px; }
+.spick-vs { display: flex; align-items: center; color: #555; font-size: 11px; padding: 0 2px; }
+.spick-tag { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.spick-badge { font-size: 10px; color: #facc15; font-weight: 700; margin-left: 6px; }
+.spick-spread { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; text-align: right; white-space: nowrap; }
+.spick-spread.fav { color: #4ade80; }
+.spick-spread.dog { color: #9db4d0; }
+.spick-savebar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 16px; padding: 12px 14px; border-top: 1px solid #2a2a3e; font-size: 13px;
+}
+.spick-saved { color: #4ade80; font-weight: 600; }
+.spick-unsaved { color: #facc15; font-weight: 600; }
+.spick-error { color: #f87171; font-weight: 600; }
 .st-out { color: #f87171; font-weight: 700; }

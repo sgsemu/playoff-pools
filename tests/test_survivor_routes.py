@@ -600,3 +600,98 @@ def test_settle_season_marks_pool_complete_and_records_winners(mock_sb, authed_c
     assert body["winner_entry_ids"] == ["e-win"]
     assert sb.tables["pools"][0]["draft_status"] == "complete"
     assert sb.tables["pools"][0]["survivor_config"]["winner_entry_ids"] == ["e-win"]
+
+
+# ---------------------------------------------------------------------------
+# GET pick view (Task 13): renders this week's games with logos + spreads,
+# marks an already-used team, and shows the member's current pick.
+# ---------------------------------------------------------------------------
+
+def _pick_view_tables():
+    tables = _base_tables()
+    tables["competitions"] = [{"id": "c1", "league": "nfl", "season": 2026}]
+    tables["teams"] = [
+        {"id": "team-pit", "competition_id": "c1", "ext_id": 23,
+         "name": "Pittsburgh Steelers", "abbreviation": "PIT"},
+        {"id": "team-nyj", "competition_id": "c1", "ext_id": 20,
+         "name": "New York Jets", "abbreviation": "NYJ"},
+        {"id": "team-kc", "competition_id": "c1", "ext_id": 12,
+         "name": "Kansas City Chiefs", "abbreviation": "KC"},
+        {"id": "team-lv", "competition_id": "c1", "ext_id": 13,
+         "name": "Las Vegas Raiders", "abbreviation": "LV"},
+    ]
+    # Far-future kickoffs so week 5 resolves as the current (not-yet-locked) week.
+    tables["game_results"] = [
+        {"espn_game_id": "g-pit-nyj", "competition_id": "c1", "week": 5,
+         "kickoff_at": "2099-01-04T18:00:00+00:00",
+         "home_team_id": 23, "away_team_id": 20},
+        {"espn_game_id": "g-kc-lv", "competition_id": "c1", "week": 5,
+         "kickoff_at": "2099-01-05T18:00:00+00:00",
+         "home_team_id": 12, "away_team_id": 13},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active"},
+    ]
+    # Chiefs already used in an earlier week -> should render greyed/used on
+    # this week's board even though they're playing again.
+    tables["survivor_picks"] = [
+        {"id": "p-old", "entry_id": "e1", "week": 2, "team_ref": "team-kc",
+         "espn_game_id": "g-old", "result": "win", "set_by": "member"},
+    ]
+    return tables
+
+
+_FAKE_ODDS_EVENT = {
+    "home_team": "Pittsburgh Steelers",
+    "away_team": "New York Jets",
+    "bookmakers": [{
+        "key": "fanduel", "title": "FanDuel",
+        "markets": [{
+            "key": "spreads",
+            "outcomes": [
+                {"name": "Pittsburgh Steelers", "price": -150, "point": -3.0},
+                {"name": "New York Jets", "price": 130, "point": 3.0},
+            ],
+        }],
+    }],
+}
+
+
+@patch("services.odds.fetch_odds")
+@patch("routes.survivor.get_service_client")
+def test_survivor_pick_view_renders_logo_spread_and_used_team(mock_sb, mock_fetch_odds, authed_client):
+    sb = FakeSb(_pick_view_tables())
+    mock_sb.return_value = sb
+    mock_fetch_odds.return_value = [_FAKE_ODDS_EVENT]
+
+    resp = authed_client.get("/pool/pool-1/survivor/pick")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    # Team nickname + real ESPN logo URL rendered.
+    assert "Steelers" in html
+    assert "espncdn.com/i/teamlogos/nfl/500/23.png" in html
+    # Spread value from the (mocked) odds event rendered somewhere on the page.
+    assert "3.0" in html
+    # Chiefs were used in week 2 -- greyed/disabled and tagged with the week used.
+    assert "spick-used" in html
+    assert "used W2" in html
+
+
+@patch("services.odds.fetch_odds")
+@patch("routes.survivor.get_service_client")
+def test_survivor_pick_json_matches_view_data(mock_sb, mock_fetch_odds, authed_client):
+    sb = FakeSb(_pick_view_tables())
+    mock_sb.return_value = sb
+    mock_fetch_odds.return_value = [_FAKE_ODDS_EVENT]
+
+    resp = authed_client.get("/pool/pool-1/survivor/pick.json")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["week"] == 5
+    assert len(body["games"]) == 2
+    used_refs = {
+        g[side]["team_ref"]: g[side]["used_week"]
+        for g in body["games"] for side in ("home", "away")
+    }
+    assert used_refs["team-kc"] == 2

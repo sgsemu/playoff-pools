@@ -7,6 +7,7 @@
         <b>{{ alive_count }} of {{ total_count }} alive</b>
         · Week {{ current_week }} picks
         {% if current_week_locked %}locked{% else %}lock Sun 1:00 PM ET{% endif %}
+        · <a href="/pool/{{ pool_id }}/survivor/pick">Make your pick →</a>
     </p>
 
     {% if board.entries %}
