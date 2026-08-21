@@ -3,6 +3,7 @@ No network or DB — takes plain dicts/values, returns decisions. DB access live
 in services/survivor_data.py; ESPN/odds elsewhere."""
 from datetime import datetime, date, time
 from zoneinfo import ZoneInfo
+from services.scoring import match_outcomes
 
 ET = ZoneInfo("America/New_York")
 
@@ -22,3 +23,50 @@ def pick_lock_at(kickoff_at, week_sunday, sunday_lock_et="13:00"):
 
 def is_locked(now, kickoff_at, week_sunday, sunday_lock_et="13:00"):
     return now >= pick_lock_at(kickoff_at, week_sunday, sunday_lock_et)
+
+
+def _outcome_for(team_ext_id, game):
+    """'win' | 'loss' | 'tie' for the given team in a resolved game."""
+    for tid, outcome in match_outcomes(game):
+        if tid == team_ext_id:
+            return "tie" if outcome == "draw" else outcome
+    return "loss"  # team not found in game -> treat as loss (defensive)
+
+
+def resolve_week(entries, picks_by_entry, games_by_espn_id, week, mercy_after_week=7):
+    """Grade one week. Only active entries are considered. Tie counts as a win
+    (survive). A missing pick is a loss. If, after grading, no active entry
+    survived AND week >= mercy_after_week, nobody is eliminated (mercy rule).
+    Idempotent: depends only on inputs."""
+    graded = {}
+    survivors = 0
+    for e in entries:
+        if e["status"] != "active":
+            continue
+        pick = picks_by_entry.get(e["id"])
+        if not pick:
+            graded[e["id"]] = {"result": "no_pick", "survived": False}
+            continue
+        game = games_by_espn_id.get(pick["espn_game_id"])
+        if game is None:
+            # game not final yet -> leave pending, do not change status
+            graded[e["id"]] = {"result": "pending", "survived": None}
+            continue
+        outcome = _outcome_for(pick["team_ext_id"], game)
+        survived = outcome in ("win", "tie")
+        graded[e["id"]] = {"result": outcome, "survived": survived}
+        if survived:
+            survivors += 1
+
+    decided = [g for g in graded.values() if g["survived"] is not None]
+    mercy = week >= mercy_after_week and survivors == 0 and len(decided) > 0
+
+    out = {}
+    for eid, g in graded.items():
+        if g["survived"] is None:
+            out[eid] = {"result": "pending", "status": "active", "eliminated_week": None}
+        elif g["survived"] or mercy:
+            out[eid] = {"result": g["result"], "status": "active", "eliminated_week": None}
+        else:
+            out[eid] = {"result": g["result"], "status": "eliminated", "eliminated_week": week}
+    return out
