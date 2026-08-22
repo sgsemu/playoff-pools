@@ -7,7 +7,6 @@
         <b>{{ alive_count }} of {{ total_count }} alive</b>
         · Week {{ current_week }} picks
         {% if current_week_locked %}locked{% else %}lock Sun 1:00 PM ET{% endif %}
-        · <a class="survivor-pick-link" href="/pool/{{ pool_id }}/survivor/pick">Make your pick →</a>
         · <button type="button" class="btn btn-secondary sb-rules-toggle" onclick="toggleSbRules()">Rules</button>
     </p>
 
@@ -30,6 +29,13 @@
             <li>Last one standing wins the pool.</li>
         </ul>
     </div>
+
+    {% if pick_data %}
+    <h2 class="section-title">This week's pick</h2>
+    {% with data = pick_data %}
+    {% include "pool/_survivor_pick_section.html" with context %}
+    {% endwith %}
+    {% endif %}
 
     <h2 class="section-title">Player Results</h2>
     {% if board.entries %}
@@ -160,4 +166,13 @@
         }
     }
 </script>
+
+{% if pick_data %}
+<script>
+    window.POOL_ID = {{ pool_id | tojson }};
+    window.CURRENT_WEEK = {{ pick_data.week | tojson }};
+    window.INITIAL_PICK_DATA = {{ pick_data | tojson }};
+</script>
+<script src="/static/js/survivor.js"></script>
+{% endif %}
 {% endblock %}

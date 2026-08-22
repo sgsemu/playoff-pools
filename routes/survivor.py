@@ -482,6 +482,13 @@ def survivor_board(pool_id):
         None,
     ) if viewer_member_id else None
 
+    # Inline weekly pick section: same data the standalone pick page/JSON
+    # endpoint serve (_pick_board_data), scoped to the viewing member's own
+    # entry only -- reuses the pool_members row already fetched above rather
+    # than a second query. None for a non-member viewer, so the template
+    # simply omits the section.
+    pick_data = _pick_board_data(sb, pool_id, viewer_member[0]) if viewer_member else None
+
     alive_count = sum(1 for e in data["entries"] if e["status"] == "active")
 
     # Buyback summary per entry -- drives the Player Results expand detail's
@@ -509,7 +516,7 @@ def survivor_board(pool_id):
         current_week_locked=current_week_locked,
         week_locked=week_locked, viewer_entry_id=viewer_entry_id,
         alive_count=alive_count, total_count=len(data["entries"]),
-        commish=commish, rules=rules,
+        commish=commish, rules=rules, pick_data=pick_data,
     )
 
 

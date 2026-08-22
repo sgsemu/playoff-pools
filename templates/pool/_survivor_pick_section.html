@@ -1,0 +1,57 @@
+{# Shared weekly-pick markup: lockbar + games list + save bar.
+
+Rendered from a `data` variable in the shape returned by
+routes.survivor._pick_board_data (same shape as GET .../survivor/pick.json).
+Included both by the standalone pick page (_survivor_pick.html) and inline
+at the top of the status board (survivor_board.html) -- keep this partial
+free of page-level chrome (no <h1>, no back-link, no outer page wrapper) so
+both callers can wrap it in whatever chrome fits their page. #}
+{% if data.week is none %}
+<div class="empty-state"><p>No games scheduled yet — check back once this week's slate is ingested.</p></div>
+{% else %}
+
+<div class="spick-lockbar" id="spick-lockbar" data-week-lock-at="{{ data.week_lock_at | tojson }}">
+    <span><b>Week {{ data.week }}</b> — pick one winner</span>
+    <span id="spick-countdown">
+        {% if data.locked %}Locked{% else %}Locks Sun 1:00 PM ET{% endif %}
+    </span>
+</div>
+<p class="spick-rulenote">One team per season (even after a buyback). Tie counts as a win. Spread shown for context (best line across books) — you're still picking straight up.</p>
+
+<div id="spick-games">
+    {% for g in data.games %}
+    <div class="spick-game" data-espn-game-id="{{ g.espn_game_id }}">
+        <div class="spick-game-meta">
+            {{ g.kickoff_label }}
+            {% if g.early_lock %}<span class="spick-badge">⚡ {{ g.early_lock_label }} — locks early</span>{% endif %}
+        </div>
+        <div class="spick-matchup">
+            {% for team in (g.away, g.home) %}
+            {% set is_used = team.used_week is not none %}
+            {% set is_disabled = is_used or data.locked %}
+            <button type="button"
+                    class="spick-team{% if team.selected %} spick-sel{% endif %}{% if is_used %} spick-used{% endif %}{% if data.locked and not is_used %} spick-locked{% endif %}"
+                    data-team-ref="{{ team.team_ref }}"
+                    {% if is_disabled %}disabled{% endif %}
+                    onclick='pickTeam({{ team.team_ref | tojson }}, {{ g.espn_game_id | tojson }}, {{ g.week | tojson }})'>
+                {% if team.logo_url %}<img class="spick-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
+                <span class="spick-tname">{{ team.nickname }}</span>
+                {% if is_used %}
+                <span class="spick-tag">used W{{ team.used_week }}</span>
+                {% elif team.spread is not none %}
+                <span class="spick-spread {{ 'fav' if team.spread < 0 else 'dog' }}">{{ '%+.1f' | format(team.spread) if team.spread > 0 else '%.1f' | format(team.spread) }}</span>
+                {% endif %}
+            </button>
+            {% if loop.index == 1 %}<div class="spick-vs">@</div>{% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="spick-savebar" id="spick-savebar">
+    <span id="spick-save-status" class="{% if data.current_pick %}spick-saved{% endif %}">
+        {% if data.current_pick %}✓ Current pick: <b>{{ data.current_pick.nickname }}</b>{% if data.current_pick.spread is not none %} ({{ '%+.1f' | format(data.current_pick.spread) if data.current_pick.spread > 0 else '%.1f' | format(data.current_pick.spread) }}){% endif %} — saved{% else %}No pick yet this week{% endif %}
+    </span>
+</div>
+{% endif %}
