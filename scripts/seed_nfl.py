@@ -4,11 +4,15 @@ Run once: python -m scripts.seed_nfl"""
 import sys, requests
 from services.supabase_client import get_service_client
 
+_HDRS = {"User-Agent": "Mozilla/5.0"}
 ESPN_TEAMS = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams"
+# Fallback host: site.api occasionally 403s a given IP (rate limiting); the
+# core API is a separate host that returns the same teams as $ref links.
+ESPN_CORE_TEAMS = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/teams?limit=40"
 
 
-def fetch_teams():
-    r = requests.get(ESPN_TEAMS, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+def _fetch_teams_site():
+    r = requests.get(ESPN_TEAMS, headers=_HDRS, timeout=15)
     r.raise_for_status()
     out = []
     for t in r.json().get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", []):
@@ -17,9 +21,34 @@ def fetch_teams():
             "ext_id": int(team["id"]),
             "name": team["displayName"],
             "abbreviation": team["abbreviation"],
-            "league": "nfl",
         })
     return out
+
+
+def _fetch_teams_core():
+    """Fallback: list team $refs from the core API, then fetch each for details."""
+    r = requests.get(ESPN_CORE_TEAMS, headers=_HDRS, timeout=15)
+    r.raise_for_status()
+    out = []
+    for item in r.json().get("items", []):
+        ref = item.get("$ref")
+        if not ref:
+            continue
+        d = requests.get(ref.replace("http://", "https://"), headers=_HDRS, timeout=15).json()
+        out.append({
+            "ext_id": int(d["id"]),
+            "name": d["displayName"],
+            "abbreviation": d["abbreviation"],
+        })
+    return out
+
+
+def fetch_teams():
+    try:
+        return _fetch_teams_site()
+    except Exception as e:
+        print(f"site.api teams failed ({e}); falling back to core API", file=sys.stderr)
+        return _fetch_teams_core()
 
 
 def main():
