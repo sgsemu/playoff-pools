@@ -113,6 +113,55 @@ def test_pool_phase_past_when_competition_status_cached_complete():
 
 
 @patch("routes.pools.get_service_client")
+def test_create_pool_offers_survivor_type_and_rules_summary(mock_sb, authed_client):
+    sb = MagicMock()
+    sb.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+        {"id": "nfl-comp", "name": "NFL 2026", "league": "nfl", "scoring_defaults": {"type": "survivor"}},
+    ]
+    mock_sb.return_value = sb
+    html = authed_client.get("/pool/create").get_data(as_text=True)
+    # Survivor is selectable as a pool type
+    assert 'value="survivor"' in html
+    # The fixed survivor rules summary block is present (shown via JS when survivor is picked)
+    assert 'id="survivor-summary"' in html
+    # The draft/auction Mode+Timer+Scoring inputs live in a block that JS hides for survivor
+    assert 'id="draft-auction-options"' in html
+
+
+@patch("routes.pools.get_service_client")
+def test_create_survivor_pool_without_draft_fields(mock_sb, authed_client):
+    # The survivor UI hides Mode/Timer/Scoring, so those form fields are absent.
+    # The handler must still create the pool with survivor_config and not error.
+    captured = {}
+    def table(name):
+        t = MagicMock()
+        if name == "competitions":
+            t.select.return_value.in_.return_value.execute.return_value.data = []
+        elif name == "pools":
+            def insert(row):
+                captured["pool"] = row
+                m = MagicMock()
+                m.execute.return_value.data = [{"id": "pool-1", **row}]
+                return m
+            t.insert.side_effect = insert
+        elif name == "pool_members":
+            t.insert.return_value.execute.return_value.data = [{"id": "member-1"}]
+        else:
+            t.insert.return_value.execute.return_value.data = [{"id": "x"}]
+            t.select.return_value.eq.return_value.execute.return_value.data = []
+        return t
+    sb = MagicMock(); sb.table.side_effect = table
+    mock_sb.return_value = sb
+    resp = authed_client.post("/pool/create", data={
+        "name": "HBK Survivor", "type": "survivor", "competition_ids": ["nfl-comp"],
+    }, follow_redirects=False)
+    assert resp.status_code in (301, 302)
+    assert captured["pool"]["type"] == "survivor"
+    assert captured["pool"]["survivor_config"]  # HBK defaults stored
+    assert captured["pool"]["survivor_config"]["super_buyback"]["fee"] == 500
+
+
+@patch("routes.pools.get_service_client")
 def test_create_pool(mock_sb, authed_client):
     mock_table = MagicMock()
     mock_sb.return_value.table.return_value = mock_table
