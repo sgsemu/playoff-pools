@@ -49,7 +49,19 @@
                     {% endfor %}
                 </div>
             </div>
-            <button type="button" class="btn btn-primary" onclick="nextStep(2)">Next</button>
+            <!-- Survivor: fixed rules; survivor skips Step 2 (no draft/timer/scoring) -->
+            <div class="form-group hidden" id="survivor-summary">
+                <label>Survivor rules (fixed)</label>
+                <ul class="wc-scoring-list">
+                    <li>Pick <strong>one winner</strong> each week, straight up (no spread)</li>
+                    <li>A <strong>tie counts as a win</strong> and advances</li>
+                    <li>Each team can be used <strong>only once all season</strong> — even after a buyback</li>
+                    <li>A loss <strong>eliminates you</strong> unless you buy back</li>
+                    <li>Buybacks: Weeks 1–6 <strong>unlimited</strong> (by 1 PM Sun); Weeks 7–17 one <strong>Super BuyBack $500</strong> (by Friday)</li>
+                    <li>Last one standing wins — from Week 7 on, a week that would wipe out everyone eliminates no one, so co-winners are possible</li>
+                </ul>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="advanceFromStep1()">Next</button>
         </div>
 
         <!-- Step 2: Rules -->
@@ -99,19 +111,6 @@
                 </div>
             </div>
 
-            <!-- Survivor: fixed rules, no draft/timer/scoring inputs -->
-            <div class="form-group hidden" id="survivor-summary">
-                <label>Survivor rules (fixed)</label>
-                <ul class="wc-scoring-list">
-                    <li>Pick <strong>one winner</strong> each week, straight up (no spread)</li>
-                    <li>A <strong>tie counts as a win</strong> and advances</li>
-                    <li>Each team can be used <strong>only once all season</strong> — even after a buyback</li>
-                    <li>A loss <strong>eliminates you</strong> unless you buy back</li>
-                    <li>Buybacks: Weeks 1–6 <strong>unlimited</strong> (by 1 PM Sun); Weeks 7–17 one <strong>Super BuyBack $500</strong> (by Friday)</li>
-                    <li>Last one standing wins — from Week 7 on, a week that would wipe out everyone eliminates no one, so co-winners are possible</li>
-                </ul>
-            </div>
-
             <!-- Auction-specific -->
             <div id="auction-options" class="hidden">
                 <div class="form-group">
@@ -141,7 +140,7 @@
                 <label for="payout_description">Payout Description</label>
                 <input type="text" id="payout_description" name="payout_description" placeholder="e.g. 1st: 70%, 2nd: 30%">
             </div>
-            <button type="button" class="btn btn-secondary" onclick="nextStep(2)">Back</button>
+            <button type="button" class="btn btn-secondary" onclick="backFromStep3()">Back</button>
             <button type="submit" class="btn btn-primary" id="createBtn">Create Pool</button>
         </div>
     </form>
@@ -156,6 +155,13 @@ function nextStep(step) {
     document.querySelectorAll('.wizard-step').forEach(s => s.classList.add('hidden'));
     document.getElementById('step-' + step).classList.remove('hidden');
 }
+
+function currentType() {
+    return document.querySelector('input[name="type"]:checked').value;
+}
+// Survivor has no draft/timer/scoring, so it skips Step 2 entirely.
+function advanceFromStep1() { nextStep(currentType() === 'survivor' ? 3 : 2); }
+function backFromStep3() { nextStep(currentType() === 'survivor' ? 1 : 2); }
 
 document.getElementById('create-pool-form').addEventListener('submit', function(e) {
     var name = document.getElementById('name').value.trim();

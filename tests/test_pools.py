@@ -126,6 +126,9 @@ def test_create_pool_offers_survivor_type_and_rules_summary(mock_sb, authed_clie
     assert 'id="survivor-summary"' in html
     # The draft/auction Mode+Timer+Scoring inputs live in a block that JS hides for survivor
     assert 'id="draft-auction-options"' in html
+    # Survivor skips Step 2 entirely: Step-1 Next routes via advanceFromStep1()
+    assert 'advanceFromStep1()' in html
+    assert 'backFromStep3()' in html
 
 
 @patch("routes.pools.get_service_client")
