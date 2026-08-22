@@ -11,9 +11,9 @@
 
 {% block scripts %}
 <script>
-    const POOL_ID = {{ pool_id | tojson }};
-    const CURRENT_WEEK = {{ data.week | tojson }};
-    const INITIAL_PICK_DATA = {{ data | tojson }};
+    window.POOL_ID = {{ pool_id | tojson }};
+    window.CURRENT_WEEK = {{ data.week | tojson }};
+    window.INITIAL_PICK_DATA = {{ data | tojson }};
 </script>
 <script src="/static/js/survivor.js"></script>
 {% endblock %}

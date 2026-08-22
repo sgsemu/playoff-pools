@@ -169,9 +169,9 @@
 
 {% if pick_data %}
 <script>
-    const POOL_ID = {{ pool_id | tojson }};
-    const CURRENT_WEEK = {{ pick_data.week | tojson }};
-    const INITIAL_PICK_DATA = {{ pick_data | tojson }};
+    window.POOL_ID = {{ pool_id | tojson }};
+    window.CURRENT_WEEK = {{ pick_data.week | tojson }};
+    window.INITIAL_PICK_DATA = {{ pick_data | tojson }};
 </script>
 <script src="/static/js/survivor.js"></script>
 {% endif %}

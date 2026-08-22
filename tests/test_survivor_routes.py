@@ -1054,3 +1054,38 @@ def test_standalone_survivor_pick_page_still_renders(mock_sb, mock_fetch_odds, a
     html = resp.get_data(as_text=True)
     assert "spick-lockbar" in html
     assert "Steelers" in html
+
+
+# ---------------------------------------------------------------------------
+# Bug fix regression: commish panel + embedded pick section both render for
+# a creator who is also a member (the common case). Both partials used to
+# emit their own top-level `const POOL_ID = ...`, and two `const` decls of
+# the same identifier in sibling <script> tags throw a SyntaxError that
+# silently kills CURRENT_WEEK/INITIAL_PICK_DATA, breaking the pick UI. Now
+# both partials assign `window.POOL_ID` (idempotent), so no collision.
+# ---------------------------------------------------------------------------
+
+@patch("services.odds.fetch_odds")
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_creator_and_member_has_no_duplicate_pool_id_decl(mock_sb, mock_fetch_odds, authed_client):
+    tables = _pick_view_tables()
+    # authed_client's session user is "test-uuid", already a member via
+    # pool_members m1 (see _base_tables) -- make them the creator too, so
+    # both the commish panel AND the embedded pick section render together.
+    tables["pools"][0]["creator_id"] = "test-uuid"
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+    mock_fetch_odds.return_value = [_FAKE_ODDS_EVENT]
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    # Both partials rendered together.
+    assert "commish-panel" in html
+    assert "spick-lockbar" in html
+
+    # No top-level `const POOL_ID` declarations left anywhere -- both
+    # partials now use the collision-safe `window.POOL_ID` assignment.
+    assert html.count("const POOL_ID") == 0
+    assert "window.POOL_ID" in html
