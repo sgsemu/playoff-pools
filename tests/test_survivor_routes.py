@@ -823,8 +823,10 @@ def test_survivor_board_shows_player_results_heading(mock_sb, authed_client):
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "Player Results" in html
-    # Make your pick link stays prominent.
-    assert "Make your pick" in html
+    # The pick UI is now embedded inline (Task: inline pick) -- the old
+    # separate "Make your pick ->" link to a standalone page is gone.
+    assert "survivor-pick-link" not in html
+    assert "/survivor/pick\">Make your pick" not in html
 
 
 @patch("routes.survivor.get_service_client")
@@ -911,8 +913,13 @@ def test_survivor_board_expand_detail_hides_other_members_unlocked_pick(mock_sb,
     but asserts the fairness rule also holds for the new inline per-player
     expand detail (logos + week-by-week breakdown), not just the grid cell.
     Bob must never see Alice's unlocked week-2 team -- abbreviation OR logo
-    URL -- anywhere in the response, including inside her (hidden-by-default)
-    expand row. Alice must see her own."""
+    URL -- anywhere in the Player Results section (grid + expand row).
+    Assertions are scoped to the Player Results section rather than the
+    whole page: the board also now embeds Bob's OWN "this week's pick" UI
+    above Player Results, which legitimately shows week 2's matchup (team-C
+    vs team-D, with both teams' logos) so Bob can make his own pick --
+    that's public schedule data, not Alice's pick, so it's fine for it to
+    appear up there. Alice must see her own pick in Player Results too."""
     tables = _base_tables()
     tables["teams"] = [
         {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
@@ -959,8 +966,9 @@ def test_survivor_board_expand_detail_hides_other_members_unlocked_pick(mock_sb,
     resp = authed_client.get("/pool/pool-1/survivor")
     assert resp.status_code == 200
     bob_html = resp.get_data(as_text=True)
-    assert "DAL" not in bob_html, "week-2 pick leaked to another member before lock"
-    assert "teamlogos/nfl/500/ext-C" not in bob_html, "week-2 logo leaked to another member before lock"
+    bob_player_results = bob_html.split("Player Results", 1)[1]
+    assert "DAL" not in bob_player_results, "week-2 pick leaked to another member before lock"
+    assert "teamlogos/nfl/500/ext-C" not in bob_player_results, "week-2 logo leaked to another member before lock"
 
     # Alice loads the board: she DOES see her own week-2 pick, in the grid
     # and (once expanded) in her own detail row.
@@ -969,5 +977,80 @@ def test_survivor_board_expand_detail_hides_other_members_unlocked_pick(mock_sb,
     resp = authed_client.get("/pool/pool-1/survivor")
     assert resp.status_code == 200
     alice_html = resp.get_data(as_text=True)
-    assert "DAL" in alice_html
-    assert "teamlogos/nfl/500/ext-C" in alice_html
+    alice_player_results = alice_html.split("Player Results", 1)[1]
+    assert "DAL" in alice_player_results
+    assert "teamlogos/nfl/500/ext-C" in alice_player_results
+
+
+# ---------------------------------------------------------------------------
+# Inline pick embedding: the board page now embeds the viewer's own weekly
+# pick UI above Player Results instead of linking out to a separate page.
+# ---------------------------------------------------------------------------
+
+@patch("services.odds.fetch_odds")
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_embeds_pick_section_above_player_results(mock_sb, mock_fetch_odds, authed_client):
+    sb = FakeSb(_pick_view_tables())
+    mock_sb.return_value = sb
+    mock_fetch_odds.return_value = [_FAKE_ODDS_EVENT]
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    assert "spick-lockbar" in html
+    assert "Player Results" in html
+    # Embedded ABOVE Player Results, per the spec.
+    assert html.index("spick-lockbar") < html.index("Player Results")
+    # Pick UI itself carries this week's real game content.
+    assert "Steelers" in html
+
+
+@patch("services.odds.fetch_odds")
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_includes_survivor_js_and_initial_pick_data(mock_sb, mock_fetch_odds, authed_client):
+    sb = FakeSb(_pick_view_tables())
+    mock_sb.return_value = sb
+    mock_fetch_odds.return_value = [_FAKE_ODDS_EVENT]
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    assert '/static/js/survivor.js' in html
+    assert "INITIAL_PICK_DATA" in html
+    assert "POOL_ID" in html
+    assert re.search(r'"week":\s*5', html), "INITIAL_PICK_DATA should carry the resolved current week"
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_pick_section_shows_no_games_state(mock_sb, authed_client):
+    """When no games have been synced for the current week yet (the normal
+    local/pre-season state), the embedded section must show the friendly
+    empty state rather than erroring, and Player Results still renders
+    below it."""
+    tables = _base_tables()  # no game_results at all
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "No games scheduled yet" in html
+    assert "Player Results" in html
+
+
+@patch("services.odds.fetch_odds")
+@patch("routes.survivor.get_service_client")
+def test_standalone_survivor_pick_page_still_renders(mock_sb, mock_fetch_odds, authed_client):
+    """The old standalone /survivor/pick page keeps working as a harmless
+    fallback after the board absorbed its markup into a shared partial."""
+    sb = FakeSb(_pick_view_tables())
+    mock_sb.return_value = sb
+    mock_fetch_odds.return_value = [_FAKE_ODDS_EVENT]
+
+    resp = authed_client.get("/pool/pool-1/survivor/pick")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "spick-lockbar" in html
+    assert "Steelers" in html
