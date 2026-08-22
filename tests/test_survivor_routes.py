@@ -490,7 +490,7 @@ def test_resolve_now_eliminates_loser_and_grades_winner(mock_sb, authed_client):
     ]
     tables["game_results"] = [
         {"espn_game_id": "g1", "week": 1, "home_team_id": "ext-A", "away_team_id": "ext-B",
-         "home_score": 24, "away_score": 10, "winner_team_id": "ext-A"},
+         "home_score": 24, "away_score": 10, "winner_team_id": "ext-A", "is_complete": True},
     ]
     sb = FakeSb(tables)
     mock_sb.return_value = sb

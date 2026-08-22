@@ -22,28 +22,38 @@ def competitions_for_active_pools(sb):
 
 
 def sync_competition_results(sb, competition):
-    """Fetch + insert any new completed games for one competition. Returns the
-    count of newly inserted game_results rows."""
+    """Fetch + upsert the full game window (schedule + results) for one
+    competition, keyed on the UNIQUE espn_game_id -- a scheduled game gets
+    inserted once and then updated in place as it kicks off and finishes,
+    never duplicated. Returns the count of games that are complete AND newly
+    so (brand new and already complete, or a false->true transition since
+    the last sync). Pure schedule ingestion -- every game still upcoming --
+    always returns 0, which is what keeps standings recalc/survivor
+    resolution from firing on a schedule-only sync."""
     try:
         games = fetch_competition_results(competition)
     except Exception:
         return 0
-    new_count = 0
+
+    # Snapshot prior completion state once, before any upserts, so the
+    # newly-completed count reflects transitions during THIS sync only.
+    existing_rows = sb.table("game_results").select(
+        "espn_game_id,is_complete"
+    ).eq("competition_id", competition["id"]).execute().data
+    was_complete = {r["espn_game_id"]: r.get("is_complete") for r in existing_rows}
+
+    newly_completed = 0
     for game in games:
-        if not game["is_complete"]:
-            continue
-        existing = sb.table("game_results").select("id").eq(
-            "espn_game_id", game["espn_game_id"]
-        ).execute().data
-        if existing:
-            continue
-        sb.table("game_results").insert({
+        is_complete = game["is_complete"]
+        if is_complete and not was_complete.get(game["espn_game_id"]):
+            newly_completed += 1
+        sb.table("game_results").upsert({
             "espn_game_id": game["espn_game_id"],
             "competition_id": competition["id"],
             "home_team_id": game["home_team_id"],
             "away_team_id": game["away_team_id"],
-            "home_score": game["home_score"],
-            "away_score": game["away_score"],
+            "home_score": game["home_score"] if is_complete else 0,
+            "away_score": game["away_score"] if is_complete else 0,
             "winner_team_id": game.get("winner_team_id"),
             "stage": game["stage"],
             "is_draw": game["is_draw"],
@@ -52,6 +62,6 @@ def sync_competition_results(sb, competition):
             "league": competition["league"],   # legacy column (NBA/NHL scoring)
             "round": 1,                          # legacy column, no longer authoritative
             "game_date": today_et().isoformat(),
-        }).execute()
-        new_count += 1
-    return new_count
+            "is_complete": is_complete,
+        }, on_conflict="espn_game_id").execute()
+    return newly_completed
