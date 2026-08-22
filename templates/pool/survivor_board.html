@@ -7,9 +7,31 @@
         <b>{{ alive_count }} of {{ total_count }} alive</b>
         · Week {{ current_week }} picks
         {% if current_week_locked %}locked{% else %}lock Sun 1:00 PM ET{% endif %}
-        · <a href="/pool/{{ pool_id }}/survivor/pick">Make your pick →</a>
+        · <a class="survivor-pick-link" href="/pool/{{ pool_id }}/survivor/pick">Make your pick →</a>
+        · <button type="button" class="btn btn-secondary sb-rules-toggle" onclick="toggleSbRules()">Rules</button>
     </p>
 
+    {% set reg = rules.get('regular_buyback') or {} %}
+    {% set sup = rules.get('super_buyback') or {} %}
+    {% set reg_weeks = reg.get('weeks') or [1, 6] %}
+    {% set sup_weeks = sup.get('weeks') or [7, 17] %}
+    <div id="survivor-rules-panel" class="sb-rules-panel" hidden>
+        <h2 class="section-title">Rules</h2>
+        <ul class="sb-rules-list">
+            {% if rules.get('tie_is_win', True) %}
+            <li>A tie counts as a win.</li>
+            {% else %}
+            <li>A tie does not count as a win in this pool.</li>
+            {% endif %}
+            <li>One team per season — even a buyback pick can't reuse a team you've already picked.</li>
+            <li>Weeks {{ reg_weeks[0] }}–{{ reg_weeks[1] }}: unlimited regular buybacks if you're eliminated.</li>
+            <li>Weeks {{ sup_weeks[0] }}–{{ sup_weeks[1] }}: one Super BuyBack{% if sup.get('fee') %} (${{ sup.get('fee') }}){% endif %}, due by Friday 11:59 PM ET.</li>
+            <li>From Week {{ rules.get('mercy_after_week', 7) }} onward, the mercy rule can apply — co-winners are possible.</li>
+            <li>Last one standing wins the pool.</li>
+        </ul>
+    </div>
+
+    <h2 class="section-title">Player Results</h2>
     {% if board.entries %}
     <div class="survivor-board-wrapper">
         <table class="survivor-grid">
@@ -24,8 +46,11 @@
             </thead>
             <tbody>
                 {% for entry in board.entries %}
-                <tr data-entry-id="{{ entry.id }}">
-                    <td class="survivor-grid-name">{{ entry.display_name }}</td>
+                <tr class="sb-row" data-entry-id="{{ entry.id }}" onclick="toggleSbDetail({{ entry.id | tojson }})">
+                    <td class="survivor-grid-name">
+                        <span class="sb-caret" id="sb-caret-{{ entry.id }}">▸</span>
+                        {{ entry.display_name }}
+                    </td>
                     {% for w in range(1, current_week + 1) %}
                     {% set pick = board.picks.get(entry.id, {}).get(w) %}
                     {% set bb = entry.buybacks | selectattr('week', 'equalto', w) | first %}
@@ -52,6 +77,51 @@
                         {% endif %}
                     </td>
                 </tr>
+                <tr class="sb-detail-row" id="sb-detail-{{ entry.id }}" hidden>
+                    <td class="sb-detail-cell" colspan="{{ current_week + 2 }}">
+                        <div class="sb-detail-weeks">
+                            {% for w in range(1, current_week + 1) %}
+                            {% set pick = board.picks.get(entry.id, {}).get(w) %}
+                            {% set bb = entry.buybacks | selectattr('week', 'equalto', w) | first %}
+                            {% set is_own_entry = viewer_entry_id and entry.id == viewer_entry_id %}
+                            <div class="sb-detail-week">
+                                <div class="sb-detail-week-label">W{{ w }}</div>
+                                {# Same reveal rule as the grid cell above: another
+                                   member's pick for a not-yet-locked week is NEVER
+                                   rendered here -- no logo, no abbreviation -- until
+                                   week_locked[w] flips true, or unless this is the
+                                   viewer's own entry. #}
+                                {% if not week_locked.get(w, False) and not is_own_entry %}
+                                <div class="sb-detail-team sb-locked" title="Picks for this week are hidden until lock">🔒</div>
+                                {% elif pick %}
+                                <div class="sb-detail-team sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
+                                    {% set logo = team_logos.get(pick.team_ref) %}
+                                    {% if logo %}<img class="sb-detail-logo" src="{{ logo }}" alt="{{ team_abbrs.get(pick.team_ref, pick.team_ref) }}" onerror="this.style.display='none'">{% endif %}
+                                    <span class="sb-detail-abbr">{{ team_abbrs.get(pick.team_ref, pick.team_ref) }}</span>
+                                    {% if pick.set_by == 'commissioner' %}<sup class="sb-commish" title="Set by commissioner">C</sup>{% endif %}
+                                    {% if bb %}<sup class="sb-buyback" title="Buyback">↩</sup>{% endif %}
+                                </div>
+                                {% elif bb %}
+                                <div class="sb-detail-team sb-buyback-cell" title="Buyback">↩</div>
+                                {% else %}
+                                <div class="sb-detail-team sb-none">—</div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="sb-detail-meta">
+                            <span class="sb-detail-buyback">Super BuyBack: {{ 'used' if entry.super_used else 'available' }}</span>
+                            <span class="sb-detail-buyback">Regular buybacks used: {{ entry.regular_count }}</span>
+                            <span class="sb-detail-status">
+                                {% if entry.status == 'active' %}
+                                <span class="st-alive">ALIVE</span>
+                                {% else %}
+                                <span class="st-out">OUT · Wk {{ entry.eliminated_week }}</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                    </td>
+                </tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -64,4 +134,30 @@
     {% include "pool/_survivor_commish.html" %}
     {% endif %}
 </div>
+
+<script>
+    function toggleSbDetail(entryId) {
+        var row = document.getElementById('sb-detail-' + entryId);
+        var caret = document.getElementById('sb-caret-' + entryId);
+        if (!row) return;
+        var isHidden = row.hasAttribute('hidden');
+        if (isHidden) {
+            row.removeAttribute('hidden');
+            if (caret) caret.textContent = '▾';
+        } else {
+            row.setAttribute('hidden', '');
+            if (caret) caret.textContent = '▸';
+        }
+    }
+
+    function toggleSbRules() {
+        var panel = document.getElementById('survivor-rules-panel');
+        if (!panel) return;
+        if (panel.hasAttribute('hidden')) {
+            panel.removeAttribute('hidden');
+        } else {
+            panel.setAttribute('hidden', '');
+        }
+    }
+</script>
 {% endblock %}

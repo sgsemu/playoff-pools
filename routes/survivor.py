@@ -432,9 +432,28 @@ def survivor_board(pool_id):
         for pick in entry_picks.values()
         if pick.get("team_ref")
     }
+    resolved_teams = teams_by_ref(sb, team_refs)
     team_abbrs = {
         ref: team.get("abbreviation", ref)
-        for ref, team in teams_by_ref(sb, team_refs).items()
+        for ref, team in resolved_teams.items()
+    }
+
+    # League for logo URLs, derived from the pool's competition (default
+    # "nfl" -- survivor pools are NFL-only today, but this stays derived
+    # rather than hardcoded so it doesn't silently break if that changes).
+    # Reuses the teams already fetched above for team_abbrs -- no extra
+    # per-team query.
+    league = "nfl"
+    comp_ids = get_pool_competition_ids(sb, pool_id)
+    if comp_ids:
+        comp_rows = sb.table("competitions").select("league").in_(
+            "id", comp_ids
+        ).execute().data
+        if comp_rows and comp_rows[0].get("league"):
+            league = comp_rows[0]["league"]
+    team_logos = {
+        ref: team_logo_url(league, team.get("ext_id"))
+        for ref, team in resolved_teams.items()
     }
 
     # Per-week lock state, computed independently for EVERY week column the
@@ -465,6 +484,17 @@ def survivor_board(pool_id):
 
     alive_count = sum(1 for e in data["entries"] if e["status"] == "active")
 
+    # Buyback summary per entry -- drives the Player Results expand detail's
+    # "Super BuyBack: available/used" and "Regular buybacks used: N" lines.
+    # Attached directly onto each entry dict (rather than a parallel map) so
+    # the template can read entry.super_used / entry.regular_count alongside
+    # the entry.buybacks list it already iterates for the per-week glyph.
+    for entry in data["entries"]:
+        entry["super_used"] = any(b.get("kind") == "super" for b in entry["buybacks"])
+        entry["regular_count"] = sum(1 for b in entry["buybacks"] if b.get("kind") == "regular")
+
+    rules = pool.get("survivor_config") or {}
+
     # Commissioner panel data is only ever assembled for the pool's creator
     # -- everyone else gets `commish=None` and the template omits the panel
     # entirely (mirrors auction_room.html's `pool.creator_id ==
@@ -475,10 +505,11 @@ def survivor_board(pool_id):
     return render_template(
         "pool/survivor_board.html",
         pool=pool, pool_id=pool_id, board=data, current_week=current_week,
-        team_abbrs=team_abbrs, current_week_locked=current_week_locked,
+        team_abbrs=team_abbrs, team_logos=team_logos,
+        current_week_locked=current_week_locked,
         week_locked=week_locked, viewer_entry_id=viewer_entry_id,
         alive_count=alive_count, total_count=len(data["entries"]),
-        commish=commish,
+        commish=commish, rules=rules,
     )
 
 

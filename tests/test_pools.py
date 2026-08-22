@@ -461,3 +461,25 @@ def test_pool_home_passes_wc_slot_for_world_cup_pool(mock_sb, mock_slot, authed_
     assert resp.status_code == 200
     assert b"World Cup" in resp.data or b"days" in resp.data
     mock_slot.assert_called_once()
+
+
+@patch("routes.pools.get_service_client")
+def test_pool_home_redirects_survivor_pool_to_board(mock_sb, authed_client):
+    """A survivor pool's generic pool_home page is dead weight for survivor
+    players -- they need the board (picks + status), not the odds calendar
+    and points standings. pool_home must redirect straight to the survivor
+    board before running any of the generic-pool queries."""
+    def table(name):
+        t = MagicMock()
+        if name == "pools":
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "pool-1", "name": "Survivor Pool", "type": "survivor",
+                 "creator_id": "test-uuid"}]
+        else:
+            raise AssertionError(f"pool_home must redirect before querying {name!r}")
+        return t
+
+    mock_sb.return_value.table.side_effect = table
+    resp = authed_client.get("/pool/pool-1", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["Location"] == "/pool/pool-1/survivor"

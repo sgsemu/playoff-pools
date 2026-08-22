@@ -3,6 +3,8 @@ os.environ.setdefault("SUPABASE_URL", "http://localhost:54321")
 os.environ.setdefault("SUPABASE_KEY", "test-key")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 
+import re
+
 import pytest
 from unittest.mock import patch
 from postgrest.exceptions import APIError
@@ -789,3 +791,183 @@ def test_survivor_pick_json_matches_view_data(mock_sb, mock_fetch_odds, authed_c
         for g in body["games"] for side in ("home", "away")
     }
     assert used_refs["team-kc"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Player Results: heading, inline expand, rules panel (Task 15)
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_shows_player_results_heading(mock_sb, authed_client):
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "u1", "users": {"display_name": "Alice"}}},
+        {"id": "e2", "pool_id": "pool-1", "member_id": "m2", "status": "eliminated",
+         "eliminated_week": 2,
+         "pool_members": {"user_id": "u2", "users": {"display_name": "Bob"}}},
+    ]
+    tables["survivor_picks"] = [
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "result": "win", "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "result": "loss", "set_by": "member"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Player Results" in html
+    # Make your pick link stays prominent.
+    assert "Make your pick" in html
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_shows_rules_panel(mock_sb, authed_client):
+    tables = _base_tables(survivor_config={
+        "tie_is_win": True,
+        "mercy_after_week": 7,
+        "regular_buyback": {"weeks": [1, 6], "limit": None, "deadline": "sunday_1pm"},
+        "super_buyback": {"weeks": [7, 17], "limit": 1, "fee": 500, "deadline": "friday_2359_et"},
+    })
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Rules" in html
+    assert "Super BuyBack" in html
+    assert "survivor-rules-panel" in html
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_buyback_summary_counts(mock_sb, authed_client):
+    """The Player Results expand detail's buyback summary lines
+    ("Super BuyBack: used/available", "Regular buybacks used: N") are
+    computed in survivor_board() from entry["buybacks"] (super_used =
+    any 'super' kind, regular_count = count of 'regular' kind). This
+    exercises that computation end to end for three entries:
+    - Alice: one regular buyback -> Super BuyBack available, regular=1.
+    - Bob: one super buyback -> Super BuyBack used, regular=0.
+    - Carol: no buybacks at all -> Super BuyBack available, regular=0.
+    """
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
+    ]
+    tables["pool_members"] = [
+        {"id": "m1", "pool_id": "pool-1", "user_id": "test-uuid"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e-alice", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "alice-uuid", "users": {"display_name": "Alice"}}},
+        {"id": "e-bob", "pool_id": "pool-1", "member_id": "m2", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "bob-uuid", "users": {"display_name": "Bob"}}},
+        {"id": "e-carol", "pool_id": "pool-1", "member_id": "m3", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "carol-uuid", "users": {"display_name": "Carol"}}},
+    ]
+    tables["survivor_buybacks"] = [
+        {"id": "bb-reg", "entry_id": "e-alice", "week": 3, "kind": "regular"},
+        {"id": "bb-sup", "entry_id": "e-bob", "week": 9, "kind": "super"},
+        # Carol has no buyback rows at all.
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    def _detail_block(entry_id):
+        m = re.search(r'id="sb-detail-%s".*?</tr>' % re.escape(entry_id), html, re.S)
+        assert m, f"no expand-detail row found for {entry_id}"
+        return m.group(0)
+
+    alice_block = _detail_block("e-alice")
+    assert "Super BuyBack: available" in alice_block
+    assert "Regular buybacks used: 1" in alice_block
+
+    bob_block = _detail_block("e-bob")
+    assert "Super BuyBack: used" in bob_block
+    assert "Regular buybacks used: 0" in bob_block
+
+    carol_block = _detail_block("e-carol")
+    assert "Super BuyBack: available" in carol_block
+    assert "Regular buybacks used: 0" in carol_block
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_expand_detail_hides_other_members_unlocked_pick(mock_sb, authed_client):
+    """Mirrors test_survivor_board_hides_other_members_early_week_pick_before_lock,
+    but asserts the fairness rule also holds for the new inline per-player
+    expand detail (logos + week-by-week breakdown), not just the grid cell.
+    Bob must never see Alice's unlocked week-2 team -- abbreviation OR logo
+    URL -- anywhere in the response, including inside her (hidden-by-default)
+    expand row. Alice must see her own."""
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF"},
+        {"id": "team-C", "ext_id": "ext-C", "abbreviation": "DAL"},
+        {"id": "team-D", "ext_id": "ext-D", "abbreviation": "PHI"},
+    ]
+    tables["pool_members"] = [
+        {"id": "m1", "pool_id": "pool-1", "user_id": "alice-uuid"},
+        {"id": "m2", "pool_id": "pool-1", "user_id": "bob-uuid"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "alice-uuid", "users": {"display_name": "Alice"}}},
+        {"id": "e2", "pool_id": "pool-1", "member_id": "m2", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "bob-uuid", "users": {"display_name": "Bob"}}},
+    ]
+    tables["survivor_picks"] = [
+        # Week 1 -- fully graded, safely in the past.
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "result": "win", "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "result": "loss", "set_by": "member"},
+        # Week 2 -- only Alice has picked, and week 2 hasn't locked yet.
+        {"id": "p3", "entry_id": "e1", "week": 2, "team_ref": "team-C", "result": None, "set_by": "member"},
+    ]
+    tables["game_results"] = [
+        {"espn_game_id": "g1", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2020-01-05T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+        {"espn_game_id": "g2", "competition_id": "c1", "week": 2,
+         "kickoff_at": "2099-01-04T18:00:00+00:00",
+         "home_team_id": "ext-C", "away_team_id": "ext-D"},
+    ]
+    tables["survivor_buybacks"] = [
+        {"id": "bb1", "entry_id": "e1", "week": 1, "kind": "regular"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    # Bob loads the board: must NOT see Alice's week-2 team, in any form.
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "bob-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    bob_html = resp.get_data(as_text=True)
+    assert "DAL" not in bob_html, "week-2 pick leaked to another member before lock"
+    assert "teamlogos/nfl/500/ext-C" not in bob_html, "week-2 logo leaked to another member before lock"
+
+    # Alice loads the board: she DOES see her own week-2 pick, in the grid
+    # and (once expanded) in her own detail row.
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "alice-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    alice_html = resp.get_data(as_text=True)
+    assert "DAL" in alice_html
+    assert "teamlogos/nfl/500/ext-C" in alice_html
