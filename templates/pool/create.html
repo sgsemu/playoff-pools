@@ -27,6 +27,13 @@
                             <p>Bid on the teams in your chosen competition(s)</p>
                         </div>
                     </label>
+                    <label class="type-option">
+                        <input type="radio" name="type" value="survivor">
+                        <div class="type-card">
+                            <strong>Survivor</strong>
+                            <p>Pick one winner each week; a loss knocks you out (buybacks allowed)</p>
+                        </div>
+                    </label>
                 </div>
             </div>
             <div class="form-group">
@@ -92,6 +99,19 @@
                 </div>
             </div>
 
+            <!-- Survivor: fixed rules, no draft/timer/scoring inputs -->
+            <div class="form-group hidden" id="survivor-summary">
+                <label>Survivor rules (fixed)</label>
+                <ul class="wc-scoring-list">
+                    <li>Pick <strong>one winner</strong> each week, straight up (no spread)</li>
+                    <li>A <strong>tie counts as a win</strong> and advances</li>
+                    <li>Each team can be used <strong>only once all season</strong> — even after a buyback</li>
+                    <li>A loss <strong>eliminates you</strong> unless you buy back</li>
+                    <li>Buybacks: Weeks 1–6 <strong>unlimited</strong> (by 1 PM Sun); Weeks 7–17 one <strong>Super BuyBack $500</strong> (by Friday)</li>
+                    <li>Last one standing wins</li>
+                </ul>
+            </div>
+
             <!-- Auction-specific -->
             <div id="auction-options" class="hidden">
                 <div class="form-group">
@@ -150,11 +170,16 @@ document.getElementById('create-pool-form').addEventListener('submit', function(
     btn.textContent = 'Creating...';
 });
 
-const typeRadios = document.querySelectorAll('input[name="type"]');
-typeRadios.forEach(r => r.addEventListener('change', function() {
-    const t = this.value;
+// Pool type drives which Step-2 rules show. Survivor uses a fixed ruleset, so
+// hide the draft/auction Mode/Timer/Scoring inputs and show the rules summary.
+function updateTypeUI() {
+    const t = document.querySelector('input[name="type"]:checked').value;
     document.getElementById('auction-options').classList.toggle('hidden', t !== 'auction');
-}));
+    document.getElementById('draft-auction-options').classList.toggle('hidden', t === 'survivor');
+    document.getElementById('survivor-summary').classList.toggle('hidden', t !== 'survivor');
+}
+document.querySelectorAll('input[name="type"]').forEach(r => r.addEventListener('change', updateTypeUI));
+updateTypeUI();
 
 document.getElementById('scoring-type').addEventListener('change', function() {
     const v = this.value;
