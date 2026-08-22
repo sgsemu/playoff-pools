@@ -271,6 +271,9 @@ def pool_home(pool_id):
         return redirect("/dashboard")
     pool = pool[0]
 
+    if pool.get("type") == "survivor":
+        return redirect(f"/pool/{pool_id}/survivor")
+
     raw_members = sb.table("pool_members").select("*").eq(
         "pool_id", pool_id
     ).order("total_points", desc=True).execute().data
