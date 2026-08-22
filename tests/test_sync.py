@@ -123,6 +123,44 @@ def test_sync_upserts_all_games_but_only_counts_newly_completed(mock_fetch):
     assert scheduled["away_score"] == 0
 
 
+@patch("services.sync.today_et")
+@patch("services.sync.fetch_competition_results")
+def test_sync_game_date_derived_from_kickoff_not_sync_day(mock_fetch, mock_today):
+    # Regression: sync moved from insert-once to upsert-always, which was
+    # clobbering game_date with today's date on every run (breaking
+    # playoff_day_count / the WC matchday counter). game_date must track the
+    # game's own kickoff date in ET, not the day sync happens to run.
+    import datetime
+    mock_today.return_value = datetime.date(2026, 8, 22)  # "today" != kickoff date
+    mock_fetch.return_value = [
+        {"espn_game_id": "g1", "home_team_id": 203, "away_team_id": 467,
+         "home_score": 0, "away_score": 0, "is_complete": False, "stage": "group",
+         "is_draw": False, "kickoff_at": "2026-01-11T23:00Z"},
+    ]
+    sb, store = _sb_with_game_results()
+    sync_competition_results(sb, _COMP)
+
+    row = store.rows[0]
+    # 23:00 UTC on Jan 11 is still Jan 11 in ET -- proves ET conversion, not
+    # a naive UTC date, and proves it's NOT today_et()'s mocked date.
+    assert row["game_date"] == "2026-01-11"
+    assert row["game_date"] != mock_today.return_value.isoformat()
+
+
+@patch("services.sync.fetch_competition_results")
+def test_sync_game_date_falls_back_to_today_when_kickoff_missing(mock_fetch):
+    mock_fetch.return_value = [
+        {"espn_game_id": "g1", "home_team_id": 203, "away_team_id": 467,
+         "home_score": 0, "away_score": 0, "is_complete": False, "stage": "group",
+         "is_draw": False, "kickoff_at": None},
+    ]
+    sb, store = _sb_with_game_results()
+    sync_competition_results(sb, _COMP)
+
+    from services.espn_api import today_et
+    assert store.rows[0]["game_date"] == today_et().isoformat()
+
+
 @patch("services.sync.fetch_competition_results")
 def test_sync_schedule_only_returns_zero_newly_completed(mock_fetch):
     # Pure schedule ingestion (nothing complete yet) must not trigger

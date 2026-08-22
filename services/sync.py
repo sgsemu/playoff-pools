@@ -3,7 +3,21 @@ the runtime auto-sync. Writes game_results tagged with competition_id/stage/
 is_draw, and keeps the legacy league/round columns so the existing NBA/NHL
 scoring path is unaffected."""
 import datetime
-from services.espn_api import fetch_competition_results, today_et
+from services.espn_api import _ET, fetch_competition_results, today_et
+
+
+def _game_date(kickoff_at):
+    """The game's own date in ET, derived from its kickoff timestamp -- not
+    the date sync happens to run on. Falls back to today_et() when
+    kickoff_at is missing or unparseable (e.g. a malformed ESPN payload)."""
+    if kickoff_at:
+        try:
+            return datetime.datetime.fromisoformat(
+                kickoff_at.replace("Z", "+00:00")
+            ).astimezone(_ET).date().isoformat()
+        except (ValueError, AttributeError):
+            pass
+    return today_et().isoformat()
 
 
 def competitions_for_active_pools(sb):
@@ -61,7 +75,7 @@ def sync_competition_results(sb, competition):
             "kickoff_at": game.get("kickoff_at"),
             "league": competition["league"],   # legacy column (NBA/NHL scoring)
             "round": 1,                          # legacy column, no longer authoritative
-            "game_date": today_et().isoformat(),
+            "game_date": _game_date(game.get("kickoff_at")),
             "is_complete": is_complete,
         }, on_conflict="espn_game_id").execute()
     return newly_completed

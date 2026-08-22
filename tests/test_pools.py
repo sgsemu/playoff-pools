@@ -43,13 +43,16 @@ def test_dashboard_loads(mock_sb, authed_client):
     assert b"My Pools" in resp.data
 
 
-def _final_sb(finals_game=False):
-    """Mock sb where the game_results 'final' lookup returns a row iff finals_game."""
+def _final_sb(finals_game=False, is_complete=True):
+    """Mock sb where the game_results 'final' lookup returns a row iff
+    finals_game and is_complete -- mirrors the competition_id/stage/
+    is_complete filter chain in _competition_complete. A scheduled
+    (is_complete=False) final row must NOT be treated as done."""
     def table(name):
         t = MagicMock()
         if name == "game_results":
-            t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = (
-                [{"id": "g-final"}] if finals_game else [])
+            data = [{"id": "g-final"}] if (finals_game and is_complete) else []
+            t.select.return_value.eq.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = data
         return t
     sb = MagicMock(); sb.table.side_effect = table
     return sb
@@ -91,6 +94,23 @@ def test_pool_phase_past_when_final_recorded():
     comps = [{"id": "c-wc", "stages": [{"key": "group"}, {"key": "final"}]}]
     from routes.pools import _pool_phase
     assert _pool_phase(_final_sb(finals_game=True), {"id": "p", "draft_status": "complete"}, comps) == "past"
+
+
+def test_pool_phase_active_when_final_scheduled_but_not_yet_complete():
+    # The final's SCHEDULED row (is_complete=false, 0-0) lands in game_results
+    # at kickoff time now that sync ingests the full schedule. That row alone
+    # must not crown a champion -- only a COMPLETED final does.
+    comps = [{"id": "c-wc", "stages": [{"key": "group"}, {"key": "final"}]}]
+    from routes.pools import _pool_phase
+    assert _pool_phase(_final_sb(finals_game=True, is_complete=False),
+                       {"id": "p", "draft_status": "complete"}, comps) == "active"
+
+
+def test_pool_phase_past_when_final_completed():
+    comps = [{"id": "c-wc", "stages": [{"key": "group"}, {"key": "final"}]}]
+    from routes.pools import _pool_phase
+    assert _pool_phase(_final_sb(finals_game=True, is_complete=True),
+                       {"id": "p", "draft_status": "complete"}, comps) == "past"
 
 
 @patch("routes.pools.fetch_finals_complete", lambda comp: False)
