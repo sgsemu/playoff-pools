@@ -18,7 +18,11 @@
     <div id="survivor-rules-panel" class="sb-rules-panel" hidden>
         <h2 class="section-title">Rules</h2>
         <ul class="sb-rules-list">
-            <li>A tie counts as a win{% if not rules.get('tie_is_win', True) %} (unless your commissioner has turned this off){% endif %}.</li>
+            {% if rules.get('tie_is_win', True) %}
+            <li>A tie counts as a win.</li>
+            {% else %}
+            <li>A tie does not count as a win in this pool.</li>
+            {% endif %}
             <li>One team per season — even a buyback pick can't reuse a team you've already picked.</li>
             <li>Weeks {{ reg_weeks[0] }}–{{ reg_weeks[1] }}: unlimited regular buybacks if you're eliminated.</li>
             <li>Weeks {{ sup_weeks[0] }}–{{ sup_weeks[1] }}: one Super BuyBack{% if sup.get('fee') %} (${{ sup.get('fee') }}){% endif %}, due by Friday 11:59 PM ET.</li>

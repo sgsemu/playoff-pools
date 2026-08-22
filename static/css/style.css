@@ -809,6 +809,45 @@ a.best-line-book:hover { background: #353550; }
 .sb-status { white-space: nowrap; }
 .st-alive { color: #4ade80; font-weight: 700; }
 
+/* Survivor board header link + rules toggle */
+.survivor-pick-link { color: #7c6ef0; text-decoration: none; font-weight: 600; }
+.survivor-pick-link:hover { text-decoration: underline; }
+.sb-rules-toggle { width: auto; padding: 4px 12px; font-size: 12px; }
+
+/* Survivor rules panel (collapsible) */
+.sb-rules-panel {
+    border: 1px solid #2a2a3e; border-radius: 8px; padding: 14px 18px;
+    margin: 0 0 16px; background: #15152a;
+}
+.sb-rules-list { margin: 0; padding-left: 20px; color: #ccc; font-size: 13px; line-height: 1.7; }
+.sb-rules-list li { margin-bottom: 4px; }
+
+/* Player Results rows: clickable to expand detail */
+.sb-row { cursor: pointer; }
+.sb-row:hover { background: rgba(124, 110, 240, 0.08); }
+.sb-caret { display: inline-block; width: 12px; color: #888; }
+
+/* Player Results expand-detail panel */
+.sb-detail-row td.sb-detail-cell { background: #15152a; padding: 14px 18px; }
+.sb-detail-weeks { display: flex; flex-wrap: wrap; gap: 10px; }
+.sb-detail-week {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    min-width: 56px; padding: 8px; border: 1px solid #2a2a3e; border-radius: 6px; background: #1a1a2e;
+}
+.sb-detail-week-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.sb-detail-team {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 2px 6px; border-radius: 4px; font-size: 12px;
+}
+.sb-detail-logo { width: 28px; height: 28px; object-fit: contain; }
+.sb-detail-abbr { font-weight: 600; }
+.sb-detail-meta {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid #2a2a3e;
+    font-size: 12px; color: #ccc;
+}
+.sb-detail-buyback, .sb-detail-status { white-space: nowrap; }
+
 /* Survivor weekly pick screen (Task 13). */
 .spick-back-link { display: inline-block; font-size: 13px; color: #7c6ef0; text-decoration: none; margin-bottom: 12px; }
 .spick-back-link:hover { text-decoration: underline; }
