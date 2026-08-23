@@ -8,6 +8,92 @@ from unittest.mock import patch, MagicMock
 from app import create_app
 
 
+# ---------------------------------------------------------------------------
+# Small in-memory Supabase double, following the recording-double style used
+# in tests/test_survivor_routes.py -- generalized here with a delete verb so
+# delete_pool's cascade can be exercised end to end (rows actually removed,
+# not just "delete() called").
+# ---------------------------------------------------------------------------
+
+class _FakeResult:
+    def __init__(self, data):
+        self.data = data
+
+
+class _FakeQuery:
+    def __init__(self, sb, table, verb, payload=None):
+        self.sb = sb
+        self.table = table
+        self.verb = verb
+        self.payload = payload
+        self.filters = []
+
+    def eq(self, col, val):
+        self.filters.append((col, "eq", val))
+        return self
+
+    def in_(self, col, vals):
+        self.filters.append((col, "in", list(vals)))
+        return self
+
+    def order(self, *a, **k):
+        return self
+
+    def execute(self):
+        return self.sb._execute(self)
+
+
+class _FakeTableHandle:
+    def __init__(self, sb, name):
+        self.sb = sb
+        self.name = name
+
+    def select(self, cols="*"):
+        return _FakeQuery(self.sb, self.name, "select")
+
+    def insert(self, row):
+        return _FakeQuery(self.sb, self.name, "insert", payload=row)
+
+    def delete(self):
+        return _FakeQuery(self.sb, self.name, "delete")
+
+
+class FakePoolsSb:
+    def __init__(self, tables=None):
+        self.tables = {k: list(v) for k, v in (tables or {}).items()}
+        self._next_id = 1000
+
+    def table(self, name):
+        return _FakeTableHandle(self, name)
+
+    def _new_id(self):
+        self._next_id += 1
+        return f"id-{self._next_id}"
+
+    def _match(self, row, filters):
+        for col, kind, val in filters:
+            if kind == "eq" and row.get(col) != val:
+                return False
+            if kind == "in" and row.get(col) not in val:
+                return False
+        return True
+
+    def _execute(self, q):
+        rows = self.tables.setdefault(q.table, [])
+        if q.verb == "select":
+            return _FakeResult([r for r in rows if self._match(r, q.filters)])
+        if q.verb == "insert":
+            row = dict(q.payload)
+            row.setdefault("id", self._new_id())
+            rows.append(row)
+            return _FakeResult([row])
+        if q.verb == "delete":
+            matched = [r for r in rows if self._match(r, q.filters)]
+            self.tables[q.table] = [r for r in rows if r not in matched]
+            return _FakeResult(matched)
+        raise AssertionError(f"unhandled verb {q.verb}")
+
+
 @pytest.fixture
 def authed_client():
     app = create_app()
@@ -503,3 +589,99 @@ def test_pool_home_redirects_survivor_pool_to_board(mock_sb, authed_client):
     resp = authed_client.get("/pool/pool-1", follow_redirects=False)
     assert resp.status_code == 302
     assert resp.headers["Location"] == "/pool/pool-1/survivor"
+
+
+# ---------------------------------------------------------------------------
+# add_member on a survivor pool: the added member must get a survivor_entry
+# too (board_data reads survivor_entries, not pool_members -- a member with
+# no entry was invisible in Player Results).
+# ---------------------------------------------------------------------------
+
+@patch("routes.pools.get_addable_players")
+@patch("routes.pools.get_service_client")
+def test_add_member_creates_survivor_entry_for_survivor_pool(mock_sb, mock_addable, authed_client):
+    mock_addable.return_value = [{"id": "u2", "display_name": "Mike"}]
+    sb = FakePoolsSb({
+        "pools": [{"id": "pool-1", "creator_id": "test-uuid",
+                   "draft_status": "pending", "type": "survivor"}],
+        "pool_members": [{"id": "m1", "pool_id": "pool-1", "user_id": "test-uuid"}],
+        "survivor_entries": [],
+    })
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/members/add", data={"user_id": "u2"})
+    assert resp.status_code == 302
+
+    new_member = next(m for m in sb.tables["pool_members"] if m["user_id"] == "u2")
+    entries_for_new_member = [
+        e for e in sb.tables["survivor_entries"] if e["member_id"] == new_member["id"]
+    ]
+    assert len(entries_for_new_member) == 1
+    assert entries_for_new_member[0]["status"] == "active"
+
+
+@patch("routes.pools.get_addable_players")
+@patch("routes.pools.get_service_client")
+def test_add_member_skips_survivor_entry_for_non_survivor_pool(mock_sb, mock_addable, authed_client):
+    """Non-survivor pools (draft/auction) must not get a stray survivor_entries
+    row -- the entry creation is gated on pool.type == 'survivor'."""
+    mock_addable.return_value = [{"id": "u2", "display_name": "Mike"}]
+    sb = FakePoolsSb({
+        "pools": [{"id": "pool-1", "creator_id": "test-uuid",
+                   "draft_status": "pending", "type": "draft"}],
+        "pool_members": [{"id": "m1", "pool_id": "pool-1", "user_id": "test-uuid"}],
+        "survivor_entries": [],
+    })
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/members/add", data={"user_id": "u2"})
+    assert resp.status_code == 302
+    assert sb.tables["survivor_entries"] == []
+
+
+# ---------------------------------------------------------------------------
+# delete_pool: a survivor pool must clean up survivor_entries/picks/buybacks
+# and pool_competitions, not just the generic draft/auction tables.
+# ---------------------------------------------------------------------------
+
+@patch("routes.pools.get_service_client")
+def test_delete_pool_removes_survivor_tables_and_pool_competitions(mock_sb, authed_client):
+    sb = FakePoolsSb({
+        "pools": [{"id": "pool-1", "creator_id": "test-uuid"}],
+        "pool_members": [{"id": "m1", "pool_id": "pool-1", "user_id": "test-uuid"}],
+        "pool_competitions": [{"id": "pc1", "pool_id": "pool-1", "competition_id": "c1"}],
+        "survivor_entries": [
+            {"id": "e1", "pool_id": "pool-1", "member_id": "m1"},
+        ],
+        "survivor_picks": [
+            {"id": "p1", "entry_id": "e1", "week": 1},
+        ],
+        "survivor_buybacks": [
+            {"id": "b1", "entry_id": "e1", "week": 1, "kind": "regular"},
+        ],
+        "draft_picks": [], "auction_bids": [], "salary_rosters": [], "pool_standings": [],
+    })
+    mock_sb.return_value = sb
+
+    resp = authed_client.delete("/api/pool/pool-1")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"ok": True}
+
+    assert sb.tables["survivor_picks"] == []
+    assert sb.tables["survivor_buybacks"] == []
+    assert sb.tables["survivor_entries"] == []
+    assert sb.tables["pool_competitions"] == []
+    assert sb.tables["pool_members"] == []
+    assert sb.tables["pools"] == []
+
+
+@patch("routes.pools.get_service_client")
+def test_delete_pool_rejects_non_creator(mock_sb, authed_client):
+    sb = FakePoolsSb({
+        "pools": [{"id": "pool-1", "creator_id": "someone-else-uuid"}],
+    })
+    mock_sb.return_value = sb
+
+    resp = authed_client.delete("/api/pool/pool-1")
+    assert resp.status_code == 403
+    assert sb.tables["pools"] != []

@@ -1089,3 +1089,117 @@ def test_survivor_board_creator_and_member_has_no_duplicate_pool_id_decl(mock_sb
     # partials now use the collision-safe `window.POOL_ID` assignment.
     assert html.count("const POOL_ID") == 0
     assert "window.POOL_ID" in html
+
+
+# ---------------------------------------------------------------------------
+# Board fixes: invite link, delete button, entry backfill, row toggle.
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_shows_invite_link_for_creator_only(mock_sb, authed_client):
+    tables = _base_tables(creator_id="test-uuid")
+    tables["pools"][0]["invite_code"] = "INVITE123"
+    tables["pools"][0]["draft_status"] = "pending"
+    tables["pool_members"].append(
+        {"id": "m2", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    # Creator sees the invite link.
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    creator_html = resp.get_data(as_text=True)
+    assert "/join/INVITE123" in creator_html
+    assert "invite-link" in creator_html
+
+    # A non-creator member does not.
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "member-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    member_html = resp.get_data(as_text=True)
+    assert "/join/INVITE123" not in member_html
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_shows_delete_button_for_creator_only(mock_sb, authed_client):
+    tables = _base_tables(creator_id="test-uuid")
+    tables["pool_members"].append(
+        {"id": "m2", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    creator_html = resp.get_data(as_text=True)
+    assert 'onclick="deleteSurvivorPool()"' in creator_html
+
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "member-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    member_html = resp.get_data(as_text=True)
+    assert 'onclick="deleteSurvivorPool()"' not in member_html
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_backfills_missing_entry_for_member(mock_sb, authed_client):
+    """A member added without a survivor_entry (e.g. the pre-fix add_member
+    path) must still show up in Player Results -- the board route backfills
+    an entry for any pool_member lacking one before rendering."""
+    tables = _base_tables()
+    tables["pool_members"] = [
+        {"id": "m1", "pool_id": "pool-1", "user_id": "test-uuid"},
+        {"id": "m2", "pool_id": "pool-1", "user_id": "no-entry-uuid"},
+    ]
+    # No survivor_entries seeded at all -- both members are missing one. The
+    # FakeSb double doesn't actually resolve the nested
+    # pool_members(users(display_name)) join for rows inserted mid-test (it
+    # has no real join engine), so this asserts on what board_data/the
+    # template CAN observe here: both members end up with an entry row, and
+    # both show up as rows in Player Results (alive count reflects 2, not 1).
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    member_ids_with_entries = {e["member_id"] for e in sb.tables["survivor_entries"]}
+    assert member_ids_with_entries == {"m1", "m2"}
+    assert "2 of 2 alive" in html
+    assert html.count('class="sb-row"') == 2
+
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_player_rows_have_toggle_onclick_and_detail_row(mock_sb, authed_client):
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "u1", "users": {"display_name": "Alice"}}},
+        {"id": "e2", "pool_id": "pool-1", "member_id": "m2", "status": "eliminated",
+         "eliminated_week": 2,
+         "pool_members": {"user_id": "u2", "users": {"display_name": "Bob"}}},
+    ]
+    tables["survivor_picks"] = [
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "result": "win", "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "result": "loss", "set_by": "member"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    for entry_id in ("e1", "e2"):
+        assert f'toggleSbDetail("{entry_id}")' in html
+        assert f'id="sb-detail-{entry_id}"' in html
+        assert f'id="sb-caret-{entry_id}"' in html

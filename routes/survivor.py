@@ -411,6 +411,11 @@ def survivor_board(pool_id):
         return "Pool not found", 404
     pool = pool[0]
 
+    # Belt-and-suspenders: guarantee every pool_member has a survivor_entry
+    # before board_data reads survivor_entries, regardless of how the member
+    # was added (see _backfill_missing_entries docstring).
+    _backfill_missing_entries(sb, pool_id)
+
     data = board_data(sb, pool_id)
     # Display-only default for the header and the range of week columns
     # shown: the week after the last one anyone has picked yet. This must
@@ -613,6 +618,26 @@ def _member_in_pool(sb, pool_id, member_id):
     return bool(sb.table("pool_members").select("id").eq(
         "id", member_id
     ).eq("pool_id", pool_id).execute().data)
+
+
+def _backfill_missing_entries(sb, pool_id):
+    """Belt-and-suspenders for add_member: ensure every pool_members row for
+    this pool has a matching survivor_entries row before the board reads
+    them. Covers any member added by a path that doesn't (yet, or ever)
+    create an entry itself -- idempotent via get_or_create_entry, and cheap
+    (two indexed reads) since it only inserts for members actually missing
+    one. Same active_from_week=1 caveat as add_member: acceptable pre-season,
+    since the current week isn't derivable here without extra queries."""
+    member_rows = sb.table("pool_members").select("id").eq(
+        "pool_id", pool_id
+    ).execute().data
+    existing_entries = sb.table("survivor_entries").select("member_id").eq(
+        "pool_id", pool_id
+    ).execute().data
+    has_entry = {e["member_id"] for e in existing_entries}
+    for m in member_rows:
+        if m["id"] not in has_entry:
+            get_or_create_entry(sb, pool_id, m["id"])
 
 
 @survivor_bp.route("/pool/<pool_id>/survivor/assign-pick", methods=["POST"])
