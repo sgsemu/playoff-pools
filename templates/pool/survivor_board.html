@@ -52,7 +52,7 @@
             </thead>
             <tbody>
                 {% for entry in board.entries %}
-                <tr class="sb-row" data-entry-id="{{ entry.id }}" onclick="toggleSbDetail({{ entry.id | tojson }})">
+                <tr class="sb-row" data-entry-id="{{ entry.id }}" onclick='toggleSbDetail({{ entry.id | tojson }})'>
                     <td class="survivor-grid-name">
                         <span class="sb-caret" id="sb-caret-{{ entry.id }}">▸</span>
                         {{ entry.display_name }}
@@ -62,7 +62,11 @@
                     {% set bb = entry.buybacks | selectattr('week', 'equalto', w) | first %}
                     {% set is_own_entry = viewer_entry_id and entry.id == viewer_entry_id %}
                     {% if not week_locked.get(w, False) and not is_own_entry %}
-                    <td class="sb-cell sb-locked" title="Picks for this week are hidden until lock">🔒</td>
+                      {% if pick %}
+                    <td class="sb-cell sb-locked" title="Pick made — hidden until lock">🔒</td>
+                      {% else %}
+                    <td class="sb-cell sb-none" title="No pick yet">○</td>
+                      {% endif %}
                     {% elif pick %}
                     <td class="sb-cell sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
                         {{ team_abbrs.get(pick.team_ref, pick.team_ref) }}
@@ -72,7 +76,7 @@
                     {% elif bb %}
                     <td class="sb-cell sb-buyback-cell" title="Buyback">↩</td>
                     {% else %}
-                    <td class="sb-cell sb-none">—</td>
+                    <td class="sb-cell sb-none" title="No pick yet">○</td>
                     {% endif %}
                     {% endfor %}
                     <td class="sb-status">
@@ -98,7 +102,11 @@
                                    week_locked[w] flips true, or unless this is the
                                    viewer's own entry. #}
                                 {% if not week_locked.get(w, False) and not is_own_entry %}
-                                <div class="sb-detail-team sb-locked" title="Picks for this week are hidden until lock">🔒</div>
+                                  {% if pick %}
+                                <div class="sb-detail-team sb-locked" title="Pick made — hidden until lock">🔒</div>
+                                  {% else %}
+                                <div class="sb-detail-team sb-none" title="No pick yet">○</div>
+                                  {% endif %}
                                 {% elif pick %}
                                 <div class="sb-detail-team sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
                                     {% set logo = team_logos.get(pick.team_ref) %}
@@ -110,7 +118,7 @@
                                 {% elif bb %}
                                 <div class="sb-detail-team sb-buyback-cell" title="Buyback">↩</div>
                                 {% else %}
-                                <div class="sb-detail-team sb-none">—</div>
+                                <div class="sb-detail-team sb-none" title="No pick yet">○</div>
                                 {% endif %}
                             </div>
                             {% endfor %}

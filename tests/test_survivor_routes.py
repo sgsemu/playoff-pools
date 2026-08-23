@@ -680,6 +680,14 @@ def test_survivor_board_hides_other_members_early_week_pick_before_lock(mock_sb,
     assert resp.status_code == 200
     bob_html = resp.get_data(as_text=True)
     assert "DAL" not in bob_html, "week-2 pick leaked to another member before lock"
+    # Expand toggle must use a SINGLE-quoted onclick so the tojson'd (double-quoted)
+    # entry id doesn't terminate the attribute and break the click handler.
+    assert "onclick='toggleSbDetail(" in bob_html
+    assert 'onclick="toggleSbDetail(' not in bob_html
+    # Icon semantics: a lock only when a hidden pick EXISTS (Alice's week-2),
+    # and a distinct "no pick yet" marker where nothing was selected (Bob's).
+    assert "\U0001f512" in bob_html            # 🔒 for Alice's hidden week-2 pick
+    assert "No pick yet" in bob_html           # ○ marker for un-picked cells
 
     # Alice loads the board: she DOES see her own week-2 pick.
     with authed_client.session_transaction() as sess:
