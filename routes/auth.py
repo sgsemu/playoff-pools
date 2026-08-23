@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, session, flash
+from flask import Blueprint, render_template, request, redirect, session, flash, current_app
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from services.supabase_client import get_service_client
@@ -118,7 +118,15 @@ def forgot():
         user = users[0]
         token = _make_reset_token(user)
         reset_url = f"{config.APP_URL}/reset/{token}"
-        send_password_reset(user["email"], reset_url)
+        try:
+            send_password_reset(user["email"], reset_url)
+        except Exception as e:
+            # A mail-provider failure must not 500 the user (or leak which
+            # emails are registered). Log it for diagnosis and still show the
+            # generic message. NOTE: if this fires in prod, the reset email
+            # isn't actually being delivered — check RESEND_API_KEY and that
+            # the FROM sender domain is verified in Resend.
+            current_app.logger.error("password reset email failed for %s: %s", email, e)
 
     # Always show the same message, whether or not the account exists,
     # to avoid leaking which emails are registered.

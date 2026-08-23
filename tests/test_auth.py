@@ -147,6 +147,26 @@ def test_forgot_known_email_sends_reset(mock_sb, mock_send, client):
     assert "/reset/" in reset_url
 
 
+@patch("routes.auth.send_password_reset")
+@patch("routes.auth.get_service_client")
+def test_forgot_survives_mail_provider_failure(mock_sb, mock_send, client):
+    # A Resend/mail failure must not 500 the user (or leak enumeration) --
+    # still 200 + the generic message.
+    import bcrypt
+    hashed = bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode()
+    mock_table = MagicMock()
+    mock_sb.return_value.table.return_value = mock_table
+    mock_table.select.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "u1", "email": "test@example.com", "password_hash": hashed, "display_name": "T"}
+    ]
+    mock_send.side_effect = Exception("Resend: API key is invalid")
+
+    resp = client.post("/forgot", data={"email": "test@example.com"})
+    assert resp.status_code == 200
+    assert b"If that email is registered" in resp.data
+    mock_send.assert_called_once()
+
+
 @patch("routes.auth.get_service_client")
 def test_reset_round_trip_updates_password(mock_sb, client):
     import bcrypt
