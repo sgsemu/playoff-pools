@@ -1,9 +1,13 @@
-"""The Odds API client, in-memory caching, and best-line computation.
+"""The Odds API client, Supabase-backed caching, and best-line computation.
 
-We cache the response per sport_key for 6 hours since lines don't move fast
-enough at this resolution for a friends pool. With ~4 sport keys polled at
-worst once every 6 hours, monthly usage stays well inside the 500/month
-free tier.
+Reads are cache-ONLY: fetch_odds() (and the OddsPapi/Caesars read helpers)
+NEVER call the upstream APIs -- they only read the `odds_cache` Supabase
+table. That is deliberate: on Vercel serverless every cold render is a fresh
+process, so an in-process cache protects nothing and each render could
+otherwise re-hit The Odds API and drain the 500/month free tier. The ONLY
+functions allowed to call the upstream APIs are refresh_odds_lines() and the
+OddsPapi refresh_* counterparts, which are meant to be invoked by a
+scheduled cron job -- never on a request path.
 
 A secondary source, OddsPapi, supplies Caesars odds (which The Odds API
 doesn't currently return for our sports). When OddsPapi has a Caesars line
@@ -11,7 +15,14 @@ that beats the best Odds API price, the chip falls to Caesars + the user's
 Caesars referral link.
 
 Public API:
-    fetch_odds(league)         -> list[event_dict]   (raw Odds API events)
+    fetch_odds(league)         -> list[event_dict]   (raw Odds API events,
+                                   cache-only -- see module docstring)
+    refresh_odds_lines(league) -> live Odds API call + cache write + credit
+                                   governor update; cron-only, never called
+                                   on a request path
+    credits_remaining()        -> last-known remaining Odds API credits, or
+                                   None if unknown
+    can_refresh(floor=60)      -> False only when known remaining < floor
     best_by_outcome(event)     -> {outcome_name: {price, book_key, book_name}}
     best_spread_by_team(event) -> {team_name: point}
     best_total(event)          -> {point, over: {price, book_key, book_name},
@@ -21,15 +32,19 @@ Public API:
     get_event_for_game(game)   -> matching Odds API event or None
 """
 import os
-import time
+from datetime import datetime, timezone
+
 import requests
 
 from services.bookmakers import bookmaker_keys_param
+from services.supabase_client import get_service_client
 
 
 _BASE = "https://api.the-odds-api.com/v4/sports"
-_TTL_SECONDS = 6 * 3600
-_CACHE = {}  # {sport_key: (timestamp, data)}
+
+# Per-process memo so one render doesn't re-query Supabase for the same
+# cache_key twice -- NOT the source of truth. Supabase (odds_cache table) is.
+_MEMO = {}
 
 
 # Our competition.league -> The Odds API sport_key.
@@ -69,20 +84,72 @@ def _norm(name):
     return _NAME_ALIASES.get(n, n)
 
 
+def _cache_get(cache_key):
+    """Read `cache_key`'s payload from the odds_cache Supabase table. Returns
+    None on a cold/missing row OR any error (network, missing table, bad
+    creds) so callers can treat a broken cache the same as an empty one."""
+    if cache_key in _MEMO:
+        return _MEMO[cache_key]
+    try:
+        client = get_service_client()
+        resp = (
+            client.table("odds_cache")
+            .select("payload")
+            .eq("cache_key", cache_key)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        payload = rows[0]["payload"] if rows else None
+    except Exception:
+        return None
+    _MEMO[cache_key] = payload
+    return payload
+
+
+def _cache_put(cache_key, payload):
+    """Upsert `cache_key`'s payload + fetched_at=now into odds_cache.
+    Best-effort: swallows errors so a Supabase hiccup can't crash a refresh."""
+    try:
+        client = get_service_client()
+        client.table("odds_cache").upsert(
+            {
+                "cache_key": cache_key,
+                "payload": payload,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+            },
+            on_conflict="cache_key",
+        ).execute()
+    except Exception:
+        return
+    _MEMO[cache_key] = payload
+
+
 def fetch_odds(league):
-    """Return cached raw events from The Odds API for the given league. Returns
-    [] when no API key is set, the league has no sport_key mapping, or the
-    request fails (with no warm cache to fall back on)."""
+    """Return cached raw events from The Odds API for the given league. Pure
+    cache read -- NEVER calls The Odds API (see module docstring). Returns []
+    when the league has no sport_key mapping or the cache is cold/empty."""
     key = sport_key(league)
     if not key:
         return []
+    payload = _cache_get(f"oddsapi:{key}")
+    return payload if payload else []
+
+
+def refresh_odds_lines(league):
+    """Call The Odds API live for `league` and refresh the cache. The ONLY
+    function that hits The Odds API's /odds endpoint -- meant to be invoked
+    by the scheduled cron, never on a request path. On success, writes
+    `oddsapi:<sport_key>` and updates the `oddsapi:_meta` credit governor
+    from the response headers. Returns the fetched data, or None on failure
+    (no API key, no sport_key mapping, or the request itself failing).
+    Never raises."""
+    key = sport_key(league)
+    if not key:
+        return None
     api_key = os.environ.get("THE_ODDS_API_KEY", "").strip()
     if not api_key:
-        return []
-    now = time.time()
-    cached = _CACHE.get(key)
-    if cached and now - cached[0] < _TTL_SECONDS:
-        return cached[1]
+        return None
     try:
         resp = requests.get(
             f"{_BASE}/{key}/odds",
@@ -98,9 +165,51 @@ def fetch_odds(league):
         resp.raise_for_status()
         data = resp.json()
     except Exception:
-        return cached[1] if cached else []
-    _CACHE[key] = (now, data)
+        return None
+    _cache_put(f"oddsapi:{key}", data)
+    _record_governor(resp)
     return data
+
+
+def _record_governor(resp):
+    """Store The Odds API's credit-remaining/used response headers under the
+    `oddsapi:_meta` cache key. Best-effort -- unparseable/missing headers
+    become None rather than raising."""
+    def _to_int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    _cache_put(
+        "oddsapi:_meta",
+        {
+            "remaining": _to_int(resp.headers.get("x-requests-remaining")),
+            "used": _to_int(resp.headers.get("x-requests-used")),
+            "at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+def credits_remaining():
+    """Last-known remaining Odds API credits (from the most recent
+    refresh_odds_lines() response headers), or None if unknown (cache cold,
+    or the header was missing/unparseable on the last refresh)."""
+    meta = _cache_get("oddsapi:_meta")
+    if not meta:
+        return None
+    return meta.get("remaining")
+
+
+def can_refresh(floor=60):
+    """False only when remaining credits are KNOWN to be below `floor`. True
+    when remaining is unknown (fail open -- the live API call is the
+    authoritative check; this is just a cheap pre-flight guard for the
+    cron)."""
+    remaining = credits_remaining()
+    if remaining is None:
+        return True
+    return remaining >= floor
 
 
 def _decimal(american):
@@ -257,11 +366,6 @@ _ODDSPAPI = {
     # automatically for those competitions too.
 }
 
-_OP_PARTICIPANTS_CACHE = {}      # {sport_id: (ts, {id_str: name})}
-_OP_ODDS_CACHE = {}              # {league: (ts, fixtures_list)}
-_OP_TTL = 6 * 3600
-
-
 def _oddspapi_get(path, params):
     api_key = os.environ.get("ODDSPAPI_API_KEY", "").strip()
     if not api_key:
@@ -278,27 +382,44 @@ def _oddspapi_get(path, params):
 
 
 def _oddspapi_participants(sport_id):
-    """Cached `{id_str: name}` map for an OddsPapi sport. Returns {} on error."""
-    now = time.time()
-    cached = _OP_PARTICIPANTS_CACHE.get(sport_id)
-    if cached and now - cached[0] < _OP_TTL:
-        return cached[1]
+    """Cache-only `{id_str: name}` map for an OddsPapi sport. Pure cache
+    read -- NEVER calls OddsPapi (see refresh_oddspapi_participants). Returns
+    {} when the cache is cold/empty."""
+    payload = _cache_get(f"oddspapi_participants:{sport_id}")
+    return payload if payload else {}
+
+
+def refresh_oddspapi_participants(sport_id):
+    """Call OddsPapi live for `sport_id`'s participants map and refresh the
+    cache. The ONLY function that hits OddsPapi's /participants endpoint --
+    cron-only, never a request path. Returns the fetched map, or None on
+    failure. Never raises."""
     data, _err = _oddspapi_get("/participants", {"sportId": sport_id})
     if not isinstance(data, dict):
-        return cached[1] if cached else {}
-    _OP_PARTICIPANTS_CACHE[sport_id] = (now, data)
+        return None
+    _cache_put(f"oddspapi_participants:{sport_id}", data)
     return data
 
 
 def _fetch_oddspapi_caesars(league):
-    """Cached list of Caesars odds fixtures for a league, or []."""
+    """Cache-only list of Caesars odds fixtures for a league. Pure cache
+    read -- NEVER calls OddsPapi (see refresh_oddspapi_caesars). Returns []
+    when unconfigured or the cache is cold/empty."""
     cfg = _ODDSPAPI.get(league)
     if not cfg or not cfg.get("tournament_ids"):
         return []
-    now = time.time()
-    cached = _OP_ODDS_CACHE.get(league)
-    if cached and now - cached[0] < _OP_TTL:
-        return cached[1]
+    payload = _cache_get(f"oddspapi:{league}")
+    return payload if payload else []
+
+
+def refresh_oddspapi_caesars(league):
+    """Call OddsPapi live for `league`'s Caesars fixtures and refresh the
+    cache. The ONLY function that hits OddsPapi's /odds-by-tournaments
+    endpoint -- cron-only, never a request path. Returns the fetched
+    fixtures list, or None when unconfigured/on total failure. Never raises."""
+    cfg = _ODDSPAPI.get(league)
+    if not cfg or not cfg.get("tournament_ids"):
+        return None
     fixtures = []
     for tid in cfg["tournament_ids"]:
         data, _err = _oddspapi_get("/odds-by-tournaments", {
@@ -309,7 +430,7 @@ def _fetch_oddspapi_caesars(league):
         })
         if isinstance(data, list):
             fixtures.extend(data)
-    _OP_ODDS_CACHE[league] = (now, fixtures)
+    _cache_put(f"oddspapi:{league}", fixtures)
     return fixtures
 
 
