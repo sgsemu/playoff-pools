@@ -14,6 +14,9 @@ Public API:
     fetch_odds(league)         -> list[event_dict]   (raw Odds API events)
     best_by_outcome(event)     -> {outcome_name: {price, book_key, book_name}}
     best_spread_by_team(event) -> {team_name: point}
+    best_total(event)          -> {point, over: {price, book_key, book_name},
+                                    under: {...}} or None
+    game_odds(event)           -> {moneyline, spread, total} bundle
     enrich_calendar_with_best_odds(calendar)         -> mutates in place
     get_event_for_game(game)   -> matching Odds API event or None
 """
@@ -86,7 +89,7 @@ def fetch_odds(league):
             params={
                 "apiKey": api_key,
                 "regions": "us",
-                "markets": "h2h,spreads",
+                "markets": "h2h,spreads,totals",
                 "oddsFormat": "american",
                 "bookmakers": bookmaker_keys_param(),
             },
@@ -158,6 +161,56 @@ def best_spread_by_team(event):
                 if cur is None or d > cur[0]:
                     best[name] = (d, point)
     return {n: v[1] for n, v in best.items()}
+
+
+def best_total(event):
+    """For one Odds API event, return {"point": <number>, "over": {price,
+    book_key, book_name}, "under": {...}} picking the bookmaker with the
+    highest decimal price for each side of the 'totals' market (mirrors
+    best_by_outcome/best_spread_by_team). Returns None if no bookmaker has a
+    totals market for this event. Either "over" or "under" may be absent if
+    only one side has a price anywhere."""
+    best = {}  # "Over"/"Under" -> (decimal, price, book_key, book_name, point)
+    for book in event.get("bookmakers", []) or []:
+        b_key = book.get("key")
+        b_name = book.get("title") or b_key
+        for market in book.get("markets", []) or []:
+            if market.get("key") != "totals":
+                continue
+            for outcome in market.get("outcomes", []) or []:
+                name = outcome.get("name")
+                price = outcome.get("price")
+                point = outcome.get("point")
+                d = _decimal(price)
+                if name is None or d is None or point is None:
+                    continue
+                cur = best.get(name)
+                if cur is None or d > cur[0]:
+                    best[name] = (d, price, b_key, b_name, point)
+    if not best:
+        return None
+    point = next(iter(best.values()))[4]
+    result = {"point": point}
+    if "Over" in best:
+        v = best["Over"]
+        result["over"] = {"price": v[1], "book_key": v[2], "book_name": v[3]}
+    if "Under" in best:
+        v = best["Under"]
+        result["under"] = {"price": v[1], "book_key": v[2], "book_name": v[3]}
+    return result
+
+
+def game_odds(event):
+    """Bundle all three markets for one Odds API event. Returns
+    {"moneyline": {...}, "spread": {...}, "total": {...} | None} -- an empty
+    bundle (moneyline={}, spread={}, total=None) if event is falsy."""
+    if not event:
+        return {"moneyline": {}, "spread": {}, "total": None}
+    return {
+        "moneyline": best_by_outcome(event),
+        "spread": best_spread_by_team(event),
+        "total": best_total(event),
+    }
 
 
 def _event_pairs_index(events):

@@ -25,7 +25,8 @@ from services.survivor_data import (
     TeamAlreadyUsed,
     _is_unique_violation,
 )
-from services.odds import get_event_for_game, best_spread_by_team
+from services.odds import get_event_for_game, best_spread_by_team, best_by_outcome, best_total
+from services.bookmakers import bookmakers
 from services.team_colors import team_logo_url
 
 survivor_bp = Blueprint("survivor", __name__)
@@ -181,6 +182,96 @@ def _team_spread_points(event, home_name, away_name):
     return home_point, away_point
 
 
+def _match_price_by_name(prices_by_name, name):
+    """Look up a {team_name: {price, book_key, book_name}} map (from
+    best_by_outcome) by team NAME, case/whitespace-insensitive, mirroring
+    _team_spread_points' matching. Returns {price, book_name} or None."""
+    if not name:
+        return None
+    n = name.strip().lower()
+    for k, v in (prices_by_name or {}).items():
+        if (k or "").strip().lower() == n:
+            return {"price": v["price"], "book_name": v["book_name"]}
+    return None
+
+
+def _game_odds_view(odds_event, home_name, away_name, home_point, away_point, books):
+    """Build the per-game `odds` bundle the template renders in the "Odds ▾"
+    panel: moneyline (both teams, best price + book), spread (both teams --
+    reuses the points already computed for the inline favorite cue, no
+    second lookup), total (O/U point), and the referral book list. Safe to
+    call with odds_event=None (moneyline/total come back empty/None)."""
+    moneyline = best_by_outcome(odds_event) if odds_event else {}
+    total = best_total(odds_event) if odds_event else None
+    return {
+        "moneyline": {
+            "home": _match_price_by_name(moneyline, home_name),
+            "away": _match_price_by_name(moneyline, away_name),
+        },
+        "spread": {"home": home_point, "away": away_point},
+        "total": total,
+        "books": books,
+    }
+
+
+def _compute_insights(games, used_refs):
+    """Three survivor-framed cards from this week's games:
+    - safest_available: biggest favorite (most negative spread) among teams
+      the viewer has NOT already used elsewhere this season.
+    - coin_flip: the game with the smallest |spread| (closest to a pick'em).
+    - biggest_spread: the largest favorite this week overall (used teams
+      included -- it's a blowout callout, not a pick suggestion).
+    Any/all may be None (e.g. no odds data this week). `used_refs` is the
+    set of team_refs the viewer has used in a week other than this one."""
+    favorite_candidates = []  # dicts: spread, team_ref, nickname, matchup
+    coinflip_candidates = []  # dicts: abs_spread, matchup
+
+    for g in games:
+        home, away = g["home"], g["away"]
+        matchup = f"{away['nickname']} @ {home['nickname']}"
+        for team in (home, away):
+            if team.get("spread") is not None and team["spread"] < 0:
+                favorite_candidates.append({
+                    "spread": team["spread"],
+                    "team_ref": team["team_ref"],
+                    "nickname": team["nickname"],
+                    "matchup": matchup,
+                })
+        spread_val = home.get("spread")
+        if spread_val is None:
+            spread_val = away.get("spread")
+        if spread_val is not None:
+            coinflip_candidates.append({"abs_spread": abs(spread_val), "matchup": matchup})
+
+    biggest_spread = None
+    if favorite_candidates:
+        b = min(favorite_candidates, key=lambda c: c["spread"])
+        biggest_spread = {
+            "label": "Biggest spread", "team": b["nickname"],
+            "matchup": b["matchup"], "spread": b["spread"],
+        }
+
+    safest_pool = [c for c in favorite_candidates if c["team_ref"] not in used_refs]
+    safest_available = None
+    if safest_pool:
+        s = min(safest_pool, key=lambda c: c["spread"])
+        safest_available = {
+            "label": "Safest available", "team": s["nickname"],
+            "matchup": s["matchup"], "spread": s["spread"],
+        }
+
+    coin_flip = None
+    if coinflip_candidates:
+        c = min(coinflip_candidates, key=lambda c: c["abs_spread"])
+        coin_flip = {"label": "Coin flip", "matchup": c["matchup"], "spread": c["abs_spread"]}
+
+    return {
+        "safest_available": safest_available,
+        "coin_flip": coin_flip,
+        "biggest_spread": biggest_spread,
+    }
+
+
 def _pick_board_data(sb, pool_id, member):
     """Everything the pick screen (view + SWR revalidation) needs for the
     member's current week: this week's games enriched with logo/spread per
@@ -190,7 +281,7 @@ def _pick_board_data(sb, pool_id, member):
     week = _resolve_current_week(sb, comp_ids)
     if week is None:
         return {"week": None, "week_lock_at": None, "locked": False,
-                "games": [], "current_pick": None}
+                "games": [], "current_pick": None, "insights": None}
 
     games_rows = sb.table("game_results").select(
         "espn_game_id, competition_id, week, kickoff_at, home_team_id, away_team_id"
@@ -240,9 +331,17 @@ def _pick_board_data(sb, pool_id, member):
             "abbreviation": team.get("abbreviation"),
             "logo_url": team_logo_url(league, team.get("ext_id")),
             "spread": point,
+            "is_favorite": point is not None and point < 0,
             "used_week": used_week_by_ref.get(ref),
             "selected": bool(current_pick_row and current_pick_row.get("team_ref") == ref),
         }
+
+    # Referral book list is the same for every game this week -- resolve
+    # once rather than per game.
+    referral_books = [
+        {"name": b["name"], "referral_url": b["referral_url"]}
+        for b in bookmakers() if b.get("referral_url")
+    ]
 
     games = []
     current_pick_view = None
@@ -281,6 +380,10 @@ def _pick_board_data(sb, pool_id, member):
             "early_lock_label": kickoff_et.strftime("%a").upper() if early_lock and kickoff_et else None,
             "home": home_view,
             "away": away_view,
+            "odds": _game_odds_view(
+                odds_event, home_team.get("name"), away_team.get("name"),
+                home_point, away_point, referral_books,
+            ),
         })
 
     return {
@@ -289,6 +392,7 @@ def _pick_board_data(sb, pool_id, member):
         "locked": locked,
         "games": games,
         "current_pick": current_pick_view,
+        "insights": _compute_insights(games, set(used_week_by_ref.keys())),
     }
 
 
