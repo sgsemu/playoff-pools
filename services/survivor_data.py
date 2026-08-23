@@ -170,8 +170,8 @@ def apply_resolution(sb, resolution, week):
 
 def resolve_week_for_pool(sb, pool, week):
     """Load a survivor pool's entries/picks/games for one `week`, translate
-    team_ref -> ext_id, treat a game as final only when both scores are
-    non-null, then call resolve_week() and write the result. Shared by the
+    team_ref -> ext_id, treat a game as final only when is_complete is true,
+    then call resolve_week() and write the result. Shared by the
     commissioner's manual `/survivor/resolve` route and resolve_and_apply()
     below (the ESPN-sync auto-resolve path) so there's exactly one place that
     knows how to grade a week. Idempotent -- depends only on current DB
@@ -208,16 +208,15 @@ def resolve_week_for_pool(sb, pool, week):
 
     games_by_espn_id = {}
     if espn_game_ids:
+        # Only completed games count -- a scheduled-but-unplayed game (now
+        # ingested up front for kickoff_at/pick-board display, with 0/0
+        # scores and is_complete=false) must be ABSENT here so resolve_week
+        # treats it as "not final" and defers the whole week rather than
+        # grading on a missing result.
         games = sb.table("game_results").select("*").in_(
             "espn_game_id", list(espn_game_ids)
-        ).eq("week", week).execute().data
+        ).eq("week", week).eq("is_complete", True).execute().data
         for g in games:
-            # Only fully final games count -- a row with no score yet (e.g. a
-            # scheduled-but-unplayed game already ingested for kickoff_at)
-            # must be treated as "not final" so resolve_week defers the whole
-            # week rather than grading on a missing result.
-            if g.get("home_score") is None or g.get("away_score") is None:
-                continue
             games_by_espn_id[g["espn_game_id"]] = g
 
     resolution = resolve_week(entries, picks_by_entry, games_by_espn_id, week, mercy_after_week)

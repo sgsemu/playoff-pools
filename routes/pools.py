@@ -122,7 +122,7 @@ def _competition_complete(sb, comp):
     if "final" in stage_keys:
         done = bool(sb.table("game_results").select("id").eq(
             "competition_id", comp["id"]
-        ).eq("stage", "final").limit(1).execute().data)
+        ).eq("stage", "final").eq("is_complete", True).limit(1).execute().data)
     else:
         done = fetch_finals_complete(comp)
     if done:

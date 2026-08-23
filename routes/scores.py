@@ -255,7 +255,7 @@ def build_standings_view(pool_id):
     games_q = sb.table("game_results").select("*")
     if comp_ids:
         games_q = games_q.in_("competition_id", comp_ids)
-    all_games = games_q.execute().data
+    all_games = games_q.eq("is_complete", True).execute().data
     team_wins = {}
     team_results = {}
     for g in all_games:
@@ -343,7 +343,9 @@ def recalculate_standings(pool_id):
         member_teams = ext_by_member
 
         # Per-team results from game_results, keyed by ext_id, with stage + outcome.
-        games = sb.table("game_results").select("*").eq("competition_id", comp.get("id")).execute().data
+        games = sb.table("game_results").select("*").eq("competition_id", comp.get("id")).eq(
+            "is_complete", True
+        ).execute().data
         team_results = {}
         for g in games:
             stage = g.get("stage")
@@ -356,7 +358,7 @@ def recalculate_standings(pool_id):
     elif pool["type"] in ("draft", "auction"):
         # Build team_wins from game_results. Key by (league, team_id) because
         # NBA and NHL ESPN ids overlap.
-        games = sb.table("game_results").select("*").execute().data
+        games = sb.table("game_results").select("*").eq("is_complete", True).execute().data
         team_wins = {}
         for g in games:
             league = g.get("league", "nba")

@@ -379,7 +379,7 @@ def _survivor_pool_fixture():
         "game_results": [
             {"espn_game_id": "g1", "week": 1, "competition_id": "comp1",
              "home_team_id": "T-A", "away_team_id": "T-B",
-             "home_score": 20, "away_score": 10},
+             "home_score": 20, "away_score": 10, "is_complete": True},
         ],
         "survivor_entries": [
             {"id": "e1", "pool_id": "pool1", "member_id": "m1",
@@ -462,7 +462,7 @@ def _week5_loss_fixture(entry_row):
         "game_results": [
             {"espn_game_id": "g5", "week": 5, "competition_id": "comp1",
              "home_team_id": "T-A", "away_team_id": "T-B",
-             "home_score": 20, "away_score": 10},
+             "home_score": 20, "away_score": 10, "is_complete": True},
         ],
         "survivor_entries": [entry_row],
         "survivor_picks": [
@@ -516,6 +516,78 @@ def test_normal_elimination_still_fires_from_week_one():
     )
     pool = {"id": "pool1", "survivor_config": {}}
     resolve_and_apply(sb, pool)
+
+    entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
+    assert entries_by_id["e1"]["status"] == "eliminated"
+    assert entries_by_id["e1"]["eliminated_week"] == 5
+
+
+# ---------------------------------------------------------------------------
+# is_complete-aware resolution: a scheduled-but-unplayed game (0-0,
+# is_complete=false) already ingested for kickoff_at/pick-board display must
+# defer the whole week rather than being graded as a loss.
+# ---------------------------------------------------------------------------
+
+def _week5_scheduled_fixture():
+    """One pool, one competition, one NOT-yet-final week-5 game (0-0,
+    is_complete=false). The single entry picked team-B."""
+    return FakeSb({
+        "pool_competitions": [
+            {"pool_id": "pool1", "competition_id": "comp1"},
+        ],
+        "teams": [
+            {"id": "team-A", "competition_id": "comp1", "ext_id": "T-A"},
+            {"id": "team-B", "competition_id": "comp1", "ext_id": "T-B"},
+        ],
+        "game_results": [
+            {"espn_game_id": "g5", "week": 5, "competition_id": "comp1",
+             "home_team_id": "T-A", "away_team_id": "T-B",
+             "home_score": 0, "away_score": 0, "is_complete": False},
+        ],
+        "survivor_entries": [
+            {"id": "e1", "pool_id": "pool1", "member_id": "m1",
+             "status": "active", "eliminated_week": None, "active_from_week": 1},
+        ],
+        "survivor_picks": [
+            {"id": "p1", "entry_id": "e1", "week": 5, "team_ref": "team-B",
+             "espn_game_id": "g5", "result": "pending"},
+        ],
+    })
+
+
+def test_incomplete_game_defers_week_entry_stays_pending():
+    sb = _week5_scheduled_fixture()
+    pool = {"id": "pool1", "survivor_config": {}}
+
+    result = resolve_and_apply(sb, pool)
+
+    assert result[5]["e1"]["result"] == "pending"
+    assert result[5]["e1"]["status"] == "active"
+
+    entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
+    assert entries_by_id["e1"]["status"] == "active"
+    assert entries_by_id["e1"]["eliminated_week"] is None
+
+    picks_by_entry = {r["entry_id"]: r for r in sb.tables["survivor_picks"]}
+    assert picks_by_entry["e1"]["result"] == "pending"
+
+
+def test_game_transitions_to_complete_then_losing_pick_is_eliminated():
+    # Same week-5 game as above, but now finalized (team-A won 20-10) via an
+    # in-place update -- exactly what sync.py's upsert does. The deferred
+    # entry (picked team-B, the loser) must now grade as eliminated.
+    sb = _week5_scheduled_fixture()
+    pool = {"id": "pool1", "survivor_config": {}}
+
+    resolve_and_apply(sb, pool)  # first pass: deferred, still pending
+
+    game = sb.tables["game_results"][0]
+    game.update({"home_score": 20, "away_score": 10, "is_complete": True})
+
+    result = resolve_and_apply(sb, pool)
+
+    assert result[5]["e1"]["result"] == "loss"
+    assert result[5]["e1"]["status"] == "eliminated"
 
     entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
     assert entries_by_id["e1"]["status"] == "eliminated"

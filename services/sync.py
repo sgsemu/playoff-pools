@@ -3,7 +3,21 @@ the runtime auto-sync. Writes game_results tagged with competition_id/stage/
 is_draw, and keeps the legacy league/round columns so the existing NBA/NHL
 scoring path is unaffected."""
 import datetime
-from services.espn_api import fetch_competition_results, today_et
+from services.espn_api import _ET, fetch_competition_results, today_et
+
+
+def _game_date(kickoff_at):
+    """The game's own date in ET, derived from its kickoff timestamp -- not
+    the date sync happens to run on. Falls back to today_et() when
+    kickoff_at is missing or unparseable (e.g. a malformed ESPN payload)."""
+    if kickoff_at:
+        try:
+            return datetime.datetime.fromisoformat(
+                kickoff_at.replace("Z", "+00:00")
+            ).astimezone(_ET).date().isoformat()
+        except (ValueError, AttributeError):
+            pass
+    return today_et().isoformat()
 
 
 def competitions_for_active_pools(sb):
@@ -22,28 +36,38 @@ def competitions_for_active_pools(sb):
 
 
 def sync_competition_results(sb, competition):
-    """Fetch + insert any new completed games for one competition. Returns the
-    count of newly inserted game_results rows."""
+    """Fetch + upsert the full game window (schedule + results) for one
+    competition, keyed on the UNIQUE espn_game_id -- a scheduled game gets
+    inserted once and then updated in place as it kicks off and finishes,
+    never duplicated. Returns the count of games that are complete AND newly
+    so (brand new and already complete, or a false->true transition since
+    the last sync). Pure schedule ingestion -- every game still upcoming --
+    always returns 0, which is what keeps standings recalc/survivor
+    resolution from firing on a schedule-only sync."""
     try:
         games = fetch_competition_results(competition)
     except Exception:
         return 0
-    new_count = 0
+
+    # Snapshot prior completion state once, before any upserts, so the
+    # newly-completed count reflects transitions during THIS sync only.
+    existing_rows = sb.table("game_results").select(
+        "espn_game_id,is_complete"
+    ).eq("competition_id", competition["id"]).execute().data
+    was_complete = {r["espn_game_id"]: r.get("is_complete") for r in existing_rows}
+
+    newly_completed = 0
     for game in games:
-        if not game["is_complete"]:
-            continue
-        existing = sb.table("game_results").select("id").eq(
-            "espn_game_id", game["espn_game_id"]
-        ).execute().data
-        if existing:
-            continue
-        sb.table("game_results").insert({
+        is_complete = game["is_complete"]
+        if is_complete and not was_complete.get(game["espn_game_id"]):
+            newly_completed += 1
+        sb.table("game_results").upsert({
             "espn_game_id": game["espn_game_id"],
             "competition_id": competition["id"],
             "home_team_id": game["home_team_id"],
             "away_team_id": game["away_team_id"],
-            "home_score": game["home_score"],
-            "away_score": game["away_score"],
+            "home_score": game["home_score"] if is_complete else 0,
+            "away_score": game["away_score"] if is_complete else 0,
             "winner_team_id": game.get("winner_team_id"),
             "stage": game["stage"],
             "is_draw": game["is_draw"],
@@ -51,7 +75,7 @@ def sync_competition_results(sb, competition):
             "kickoff_at": game.get("kickoff_at"),
             "league": competition["league"],   # legacy column (NBA/NHL scoring)
             "round": 1,                          # legacy column, no longer authoritative
-            "game_date": today_et().isoformat(),
-        }).execute()
-        new_count += 1
-    return new_count
+            "game_date": _game_date(game.get("kickoff_at")),
+            "is_complete": is_complete,
+        }, on_conflict="espn_game_id").execute()
+    return newly_completed
