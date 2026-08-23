@@ -519,6 +519,14 @@ def survivor_board(pool_id):
     is_creator = pool["creator_id"] == session["user_id"]
     commish = _commish_panel_data(sb, pool_id, data, current_week) if is_creator else None
 
+    # Returning players the creator can add directly (co-members from any of the
+    # creator's past pools, not already in this one) -- the same "add players
+    # you've played with" list the generic pool page offers. Only before settle.
+    addable_players = []
+    if is_creator and pool.get("draft_status") == "pending":
+        from routes.pools import get_addable_players
+        addable_players = get_addable_players(sb, pool_id, session["user_id"])
+
     return render_template(
         "pool/survivor_board.html",
         pool=pool, pool_id=pool_id, board=data, current_week=current_week,
@@ -527,6 +535,7 @@ def survivor_board(pool_id):
         week_locked=week_locked, viewer_entry_id=viewer_entry_id,
         alive_count=alive_count, total_count=len(data["entries"]),
         commish=commish, rules=rules, pick_data=pick_data,
+        addable_players=addable_players,
     )
 
 
