@@ -150,6 +150,15 @@ async function pickTeam(teamRef, espnGameId, week) {
                 statusEl.className = "spick-saved";
                 statusEl.innerHTML = `✓ Current pick: <b>${nameEl ? nameEl.textContent.trim() : ""}</b>${spreadEl ? " (" + spreadEl.textContent.trim() + ")" : ""} — saved`;
             }
+            // Reflect the pick in the Player Results grid immediately, on the
+            // viewer's own row (always visible to themselves) — so the top pick
+            // section and the grid below stay in sync without a reload.
+            const ownCell = document.getElementById("sb-own-w" + week);
+            if (ownCell) {
+                ownCell.className = "sb-cell sb-pending";
+                ownCell.title = "Your pick";
+                ownCell.textContent = el.dataset.abbr || "";
+            }
             spickUpdateCacheAfterPick(teamRef);
         } else {
             revert(body.error || "Failed to save pick");

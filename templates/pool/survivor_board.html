@@ -68,15 +68,15 @@
                     <td class="sb-cell sb-none" title="No pick yet">○</td>
                       {% endif %}
                     {% elif pick %}
-                    <td class="sb-cell sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
+                    <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
                         {{ team_abbrs.get(pick.team_ref, pick.team_ref) }}
                         {% if pick.set_by == 'commissioner' %}<sup class="sb-commish" title="Set by commissioner">C</sup>{% endif %}
                         {% if bb %}<sup class="sb-buyback" title="Buyback">↩</sup>{% endif %}
                     </td>
                     {% elif bb %}
-                    <td class="sb-cell sb-buyback-cell" title="Buyback">↩</td>
+                    <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-buyback-cell" title="Buyback">↩</td>
                     {% else %}
-                    <td class="sb-cell sb-none" title="No pick yet">○</td>
+                    <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-none" title="No pick yet">○</td>
                     {% endif %}
                     {% endfor %}
                     <td class="sb-status">

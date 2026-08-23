@@ -32,6 +32,7 @@ both callers can wrap it in whatever chrome fits their page. #}
             <button type="button"
                     class="spick-team{% if team.selected %} spick-sel{% endif %}{% if is_used %} spick-used{% endif %}{% if data.locked and not is_used %} spick-locked{% endif %}"
                     data-team-ref="{{ team.team_ref }}"
+                    data-abbr="{{ team.abbreviation }}"
                     {% if is_disabled %}disabled{% endif %}
                     onclick='pickTeam({{ team.team_ref | tojson }}, {{ g.espn_game_id | tojson }}, {{ g.week | tojson }})'>
                 {% if team.logo_url %}<img class="spick-logo" src="{{ team.logo_url }}" alt="" onerror="this.style.display='none'">{% endif %}
