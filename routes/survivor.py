@@ -6,7 +6,7 @@ services/survivor_data.py. This module is the thin HTTP layer: auth guard,
 JSON parsing, and translating decisions into status codes.
 """
 from datetime import datetime, time
-from flask import Blueprint, request, jsonify, render_template, session
+from flask import Blueprint, request, jsonify, render_template, redirect, session
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.competitions import (
@@ -410,6 +410,11 @@ def survivor_board(pool_id):
     if not pool:
         return "Pool not found", 404
     pool = pool[0]
+    if pool.get("type") != "survivor":
+        # URL-editing guard: this route backfills survivor_entries and
+        # renders the survivor board, neither of which is valid for a
+        # non-survivor pool. Bail out before any of that runs.
+        return redirect(f"/pool/{pool_id}")
 
     # Belt-and-suspenders: guarantee every pool_member has a survivor_entry
     # before board_data reads survivor_entries, regardless of how the member

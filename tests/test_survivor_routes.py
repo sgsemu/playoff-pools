@@ -138,9 +138,10 @@ class FakeSb:
         raise AssertionError(f"unhandled verb {q.verb}")
 
 
-def _base_tables(survivor_config=None, creator_id="creator-uuid"):
+def _base_tables(survivor_config=None, creator_id="creator-uuid", pool_type="survivor"):
     return {
-        "pools": [{"id": "pool-1", "creator_id": creator_id, "survivor_config": survivor_config or {}}],
+        "pools": [{"id": "pool-1", "creator_id": creator_id, "type": pool_type,
+                   "survivor_config": survivor_config or {}}],
         "pool_members": [{"id": "m1", "pool_id": "pool-1", "user_id": "test-uuid"}],
         "pool_competitions": [{"pool_id": "pool-1", "competition_id": "c1"}],
         "survivor_entries": [],
@@ -507,6 +508,24 @@ def test_resolve_now_eliminates_loser_and_grades_winner(mock_sb, authed_client):
 # ---------------------------------------------------------------------------
 # Commissioner: settle_season
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# GET board: non-survivor pools (URL editing) redirect instead of backfilling
+# survivor_entries / rendering a bogus survivor board.
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_redirects_non_survivor_pool_without_backfill(mock_sb, authed_client):
+    tables = _base_tables(pool_type="draft")
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code in (301, 302)
+    assert resp.headers["Location"] == "/pool/pool-1"
+    # No survivor_entries rows written for the non-survivor pool's members.
+    assert sb.tables["survivor_entries"] == []
+
 
 # ---------------------------------------------------------------------------
 # GET board: renders the members x weeks grid (Task 12)

@@ -194,7 +194,6 @@
 
 {% if pick_data %}
 <script>
-    window.POOL_ID = {{ pool_id | tojson }};
     window.CURRENT_WEEK = {{ pick_data.week | tojson }};
     window.INITIAL_PICK_DATA = {{ pick_data | tojson }};
 </script>
