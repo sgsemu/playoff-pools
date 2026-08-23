@@ -9,6 +9,7 @@ import pytest
 from unittest.mock import patch
 from postgrest.exceptions import APIError
 from app import create_app
+from routes.survivor import _pick_board_data
 
 
 @pytest.fixture
@@ -1298,3 +1299,171 @@ def test_survivor_board_player_rows_have_toggle_onclick_and_detail_row(mock_sb, 
         assert f'toggleSbDetail("{entry_id}")' in html
         assert f'id="sb-detail-{entry_id}"' in html
         assert f'id="sb-caret-{entry_id}"' in html
+
+
+# ---------------------------------------------------------------------------
+# _pick_board_data: odds bundle + insights (Task: survivor odds UX)
+# ---------------------------------------------------------------------------
+
+def _odds_pick_tables():
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC",
+         "name": "Kansas City Chiefs", "competition_id": "c1"},
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF",
+         "name": "Buffalo Bills", "competition_id": "c1"},
+    ]
+    tables["competitions"] = [{"id": "c1", "league": "nfl"}]
+    tables["game_results"] = [
+        {"espn_game_id": "g1", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2099-01-04T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+    ]
+    return tables
+
+
+@patch("routes.survivor.bookmakers")
+@patch("routes.survivor.best_total")
+@patch("routes.survivor.best_by_outcome")
+@patch("routes.survivor.best_spread_by_team")
+@patch("routes.survivor.get_event_for_game")
+def test_pick_board_data_attaches_odds_bundle(
+    mock_get_event, mock_spreads, mock_ml, mock_total, mock_books
+):
+    sb = FakeSb(_odds_pick_tables())
+    mock_get_event.return_value = {"id": "evt1"}  # only needs to be truthy
+    mock_spreads.return_value = {"Kansas City Chiefs": -3.5, "Buffalo Bills": 3.5}
+    mock_ml.return_value = {
+        "Kansas City Chiefs": {"price": -180, "book_key": "dk", "book_name": "DraftKings"},
+        "Buffalo Bills": {"price": 150, "book_key": "fd", "book_name": "FanDuel"},
+    }
+    mock_total.return_value = {
+        "point": 47.5,
+        "over": {"price": -110, "book_key": "dk", "book_name": "DraftKings"},
+        "under": {"price": -105, "book_key": "fd", "book_name": "FanDuel"},
+    }
+    mock_books.return_value = [
+        {"key": "draftkings", "name": "DraftKings", "referral_url": "https://dk.example/ref"},
+        {"key": "fanduel", "name": "FanDuel", "referral_url": ""},  # no referral -> excluded
+    ]
+
+    data = _pick_board_data(sb, "pool-1", {"id": "m1"})
+
+    assert len(data["games"]) == 1
+    game = data["games"][0]
+    odds = game["odds"]
+    # home = team-A (Chiefs, favorite), away = team-B (Bills, underdog).
+    assert odds["moneyline"]["home"] == {"price": -180, "book_name": "DraftKings"}
+    assert odds["moneyline"]["away"] == {"price": 150, "book_name": "FanDuel"}
+    assert odds["spread"] == {"home": -3.5, "away": 3.5}
+    assert odds["total"]["point"] == 47.5
+    # Only the bookmaker with a referral_url shows up in the referral list.
+    assert odds["books"] == [{"name": "DraftKings", "referral_url": "https://dk.example/ref"}]
+
+    assert game["home"]["is_favorite"] is True
+    assert game["away"]["is_favorite"] is False
+
+
+@patch("routes.survivor.bookmakers")
+@patch("routes.survivor.best_total")
+@patch("routes.survivor.best_by_outcome")
+@patch("routes.survivor.best_spread_by_team")
+@patch("routes.survivor.get_event_for_game")
+def test_pick_board_data_insights_safest_available_excludes_used_team(
+    mock_get_event, mock_spreads, mock_ml, mock_total, mock_books
+):
+    # Two games this week: Chiefs (-7, biggest favorite) @ Bills, and
+    # Cowboys (-2, coin-flip-ish) @ Eagles. The viewer already used the
+    # Chiefs in an earlier week, so "safest available" must skip them and
+    # fall through to the Cowboys even though Chiefs are the bigger favorite
+    # (and therefore still "biggest spread").
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC",
+         "name": "Kansas City Chiefs", "competition_id": "c1"},
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF",
+         "name": "Buffalo Bills", "competition_id": "c1"},
+        {"id": "team-C", "ext_id": "ext-C", "abbreviation": "DAL",
+         "name": "Dallas Cowboys", "competition_id": "c1"},
+        {"id": "team-D", "ext_id": "ext-D", "abbreviation": "PHI",
+         "name": "Philadelphia Eagles", "competition_id": "c1"},
+    ]
+    tables["competitions"] = [{"id": "c1", "league": "nfl"}]
+    tables["game_results"] = [
+        {"espn_game_id": "g1", "competition_id": "c1", "week": 2,
+         "kickoff_at": "2099-01-11T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+        {"espn_game_id": "g2", "competition_id": "c1", "week": 2,
+         "kickoff_at": "2099-01-11T18:00:00+00:00",
+         "home_team_id": "ext-C", "away_team_id": "ext-D"},
+    ]
+    tables["survivor_entries"] = [{"id": "e1", "pool_id": "pool-1", "member_id": "m1"}]
+    tables["survivor_picks"] = [
+        # Week 1 pick used the Chiefs -- unusable again this (week 2) board.
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A",
+         "espn_game_id": "g0", "set_by": "member", "override_note": None},
+    ]
+    sb = FakeSb(tables)
+
+    def _spreads_for(event):
+        if event.get("id") == "g1":
+            return {"Kansas City Chiefs": -7.0, "Buffalo Bills": 7.0}
+        return {"Dallas Cowboys": -2.0, "Philadelphia Eagles": 2.0}
+
+    mock_get_event.side_effect = lambda game: (
+        {"id": "g1"} if game["home"]["name"] == "Kansas City Chiefs" else {"id": "g2"}
+    )
+    mock_spreads.side_effect = _spreads_for
+    mock_ml.return_value = {}
+    mock_total.return_value = None
+    mock_books.return_value = []
+
+    data = _pick_board_data(sb, "pool-1", {"id": "m1"})
+
+    insights = data["insights"]
+    # Biggest spread ignores "used" status -- still the Chiefs.
+    assert insights["biggest_spread"]["team"] == "Chiefs"
+    assert insights["biggest_spread"]["spread"] == -7.0
+    # Safest available must skip the Chiefs (already used) and fall to the
+    # next-biggest favorite, the Cowboys.
+    assert insights["safest_available"]["team"] == "Cowboys"
+    assert insights["safest_available"]["spread"] == -2.0
+    # Coin flip is the smallest |spread| game -- also the Cowboys/Eagles game.
+    assert insights["coin_flip"]["spread"] == 2.0
+
+
+# ---------------------------------------------------------------------------
+# Pick section render: Odds toggle, "This week" strip, minimal favorite cue
+# ---------------------------------------------------------------------------
+
+@patch("routes.survivor.bookmakers")
+@patch("routes.survivor.best_total")
+@patch("routes.survivor.best_by_outcome")
+@patch("routes.survivor.best_spread_by_team")
+@patch("routes.survivor.get_event_for_game")
+@patch("routes.survivor.get_service_client")
+def test_survivor_pick_view_renders_odds_toggle_and_insights_strip(
+    mock_sb, mock_get_event, mock_spreads, mock_ml, mock_total, mock_books, authed_client
+):
+    sb = FakeSb(_odds_pick_tables())
+    mock_sb.return_value = sb
+    mock_get_event.return_value = {"id": "evt1"}
+    mock_spreads.return_value = {"Kansas City Chiefs": -3.5, "Buffalo Bills": 3.5}
+    mock_ml.return_value = {}
+    mock_total.return_value = None
+    mock_books.return_value = []
+
+    resp = authed_client.get("/pool/pool-1/survivor/pick")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    assert "Odds ▾" in html
+    assert 'id="spick-odds-g1"' in html
+    assert "This week" in html
+    assert 'id="spick-insights-cards"' in html
+
+    # Minimal favorite cue: the favorite (Chiefs, -3.5) shows its spread,
+    # the underdog (Bills) shows no inline number.
+    assert 'spick-spread spick-spread-muted">-3.5' in html
+    away_block = html.split('data-team-ref="team-B"', 1)[1].split("</button>", 1)[0]
+    assert "spick-spread" not in away_block

@@ -878,6 +878,50 @@ a.best-line-book:hover { background: #353550; }
 .spick-spread { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; text-align: right; white-space: nowrap; }
 .spick-spread.fav { color: #4ade80; }
 .spick-spread.dog { color: #9db4d0; }
+.spick-spread-muted { font-weight: 500; font-size: 11px; color: #7c88a0; }
+
+/* "This week" insights strip */
+.spick-insights {
+    border: 1px solid #2a2a3e; border-radius: 8px; margin-bottom: 12px;
+    background: #15152a; overflow: hidden;
+}
+.spick-insights-toggle {
+    width: 100%; text-align: left; padding: 8px 14px; background: none; border: none;
+    color: #b9aeff; font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; cursor: pointer; font: inherit;
+}
+.spick-insights-cards {
+    display: flex; flex-wrap: wrap; gap: 10px; padding: 0 14px 14px;
+}
+.spick-insight-card {
+    flex: 1 1 160px; min-width: 140px; border: 1px solid #2a2a3e; border-radius: 6px;
+    padding: 8px 10px; background: #1a1a2e;
+}
+.spick-insight-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.spick-insight-body { font-size: 13px; color: #e0e0e0; font-variant-numeric: tabular-nums; }
+.spick-insight-sub { font-size: 11px; color: #888; margin-top: 2px; }
+
+/* Per-game "Odds ▾" toggle + panel */
+.spick-odds-toggle {
+    margin-left: auto; background: none; border: 1px solid #2a2a3e; border-radius: 5px;
+    color: #9db4d0; font-size: 11px; padding: 2px 8px; cursor: pointer; font: inherit;
+}
+.spick-odds-toggle:hover { border-color: #7c6ef0; color: #b9aeff; }
+.spick-game-meta { display: flex; align-items: center; }
+.spick-odds {
+    margin-top: 6px; padding: 10px 12px; border: 1px solid #2a2a3e; border-radius: 8px;
+    background: #15152a; font-size: 12px;
+}
+.spick-odds-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; }
+.spick-odds-label { flex: none; width: 76px; color: #888; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+.spick-odds-val { flex: 1; color: #e0e0e0; font-variant-numeric: tabular-nums; }
+.spick-odds-val small { color: #888; font-weight: 400; }
+.spick-odds-books { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.spick-book-btn {
+    display: inline-block; padding: 4px 10px; border-radius: 5px; border: 1px solid #2a2a3e;
+    background: #1a1a2e; color: #4ade80; text-decoration: none; font-size: 11px; font-weight: 600;
+}
+.spick-book-btn:hover { border-color: #4ade80; }
 .spick-savebar {
     display: flex; justify-content: space-between; align-items: center;
     margin-top: 16px; padding: 12px 14px; border-top: 1px solid #2a2a3e; font-size: 13px;

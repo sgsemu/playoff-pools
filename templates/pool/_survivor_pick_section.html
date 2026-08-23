@@ -1,4 +1,4 @@
-{# Shared weekly-pick markup: lockbar + games list + save bar.
+{# Shared weekly-pick markup: insights strip + lockbar + games list + save bar.
 
 Rendered from a `data` variable in the shape returned by
 routes.survivor._pick_board_data (same shape as GET .../survivor/pick.json).
@@ -9,6 +9,36 @@ both callers can wrap it in whatever chrome fits their page. #}
 {% if data.week is none %}
 <div class="empty-state"><p>No games scheduled yet — check back once this week's slate is ingested.</p></div>
 {% else %}
+
+{% set ins = data.insights %}
+{% if ins and (ins.safest_available or ins.coin_flip or ins.biggest_spread) %}
+<div class="spick-insights" id="spick-insights">
+    <button type="button" class="spick-insights-toggle" onclick="toggleInsights()">This week ▾</button>
+    <div class="spick-insights-cards" id="spick-insights-cards">
+        {% if ins.safest_available %}
+        <div class="spick-insight-card">
+            <div class="spick-insight-label">Safest available</div>
+            <div class="spick-insight-body"><b>{{ ins.safest_available.team }}</b> {{ '%.1f' | format(ins.safest_available.spread) }}</div>
+            <div class="spick-insight-sub">{{ ins.safest_available.matchup }}</div>
+        </div>
+        {% endif %}
+        {% if ins.coin_flip %}
+        <div class="spick-insight-card">
+            <div class="spick-insight-label">Coin flip</div>
+            <div class="spick-insight-body">{{ ins.coin_flip.matchup }}</div>
+            <div class="spick-insight-sub">±{{ '%.1f' | format(ins.coin_flip.spread) }}</div>
+        </div>
+        {% endif %}
+        {% if ins.biggest_spread %}
+        <div class="spick-insight-card">
+            <div class="spick-insight-label">Biggest spread</div>
+            <div class="spick-insight-body"><b>{{ ins.biggest_spread.team }}</b> {{ '%.1f' | format(ins.biggest_spread.spread) }}</div>
+            <div class="spick-insight-sub">{{ ins.biggest_spread.matchup }}</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <div class="spick-lockbar" id="spick-lockbar" data-week-lock-at="{{ data.week_lock_at | tojson }}">
     <span><b>Week {{ data.week }}</b> — pick one winner</span>
@@ -24,6 +54,7 @@ both callers can wrap it in whatever chrome fits their page. #}
         <div class="spick-game-meta">
             {{ g.kickoff_label }}
             {% if g.early_lock %}<span class="spick-badge">⚡ {{ g.early_lock_label }} — locks early</span>{% endif %}
+            <button type="button" class="spick-odds-toggle" onclick="toggleGameOdds({{ g.espn_game_id | tojson }})">Odds ▾</button>
         </div>
         <div class="spick-matchup">
             {% for team in (g.away, g.home) %}
@@ -39,12 +70,39 @@ both callers can wrap it in whatever chrome fits their page. #}
                 <span class="spick-tname">{{ team.nickname }}</span>
                 {% if is_used %}
                 <span class="spick-tag">used W{{ team.used_week }}</span>
-                {% elif team.spread is not none %}
-                <span class="spick-spread {{ 'fav' if team.spread < 0 else 'dog' }}">{{ '%+.1f' | format(team.spread) if team.spread > 0 else '%.1f' | format(team.spread) }}</span>
+                {% elif team.is_favorite and team.spread is not none %}
+                <span class="spick-spread spick-spread-muted">{{ '%.1f' | format(team.spread) }}</span>
                 {% endif %}
             </button>
             {% if loop.index == 1 %}<div class="spick-vs">@</div>{% endif %}
             {% endfor %}
+        </div>
+        <div class="spick-odds" id="spick-odds-{{ g.espn_game_id }}" hidden>
+            <div class="spick-odds-row">
+                <span class="spick-odds-label">Moneyline</span>
+                <span class="spick-odds-val">{{ g.away.nickname }}
+                    {%- if g.odds.moneyline.away %} {{ '%+d' | format(g.odds.moneyline.away.price) }} <small>({{ g.odds.moneyline.away.book_name }})</small>{% else %} —{% endif %}
+                </span>
+                <span class="spick-odds-val">{{ g.home.nickname }}
+                    {%- if g.odds.moneyline.home %} {{ '%+d' | format(g.odds.moneyline.home.price) }} <small>({{ g.odds.moneyline.home.book_name }})</small>{% else %} —{% endif %}
+                </span>
+            </div>
+            <div class="spick-odds-row">
+                <span class="spick-odds-label">Spread</span>
+                <span class="spick-odds-val">{{ g.away.nickname }} {% if g.odds.spread.away is not none %}{{ '%+.1f' | format(g.odds.spread.away) }}{% else %}—{% endif %}</span>
+                <span class="spick-odds-val">{{ g.home.nickname }} {% if g.odds.spread.home is not none %}{{ '%+.1f' | format(g.odds.spread.home) }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="spick-odds-row">
+                <span class="spick-odds-label">Total</span>
+                <span class="spick-odds-val">{% if g.odds.total %}O/U {{ g.odds.total.point }}{% else %}—{% endif %}</span>
+            </div>
+            {% if g.odds.books %}
+            <div class="spick-odds-books">
+                {% for b in g.odds.books %}
+                <a class="spick-book-btn" href="{{ b.referral_url }}" target="_blank" rel="noopener">{{ b.name }}</a>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
     </div>
     {% endfor %}
