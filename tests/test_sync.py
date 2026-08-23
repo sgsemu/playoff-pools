@@ -270,7 +270,9 @@ def test_sync_games_cron_resolves_survivor_pool_regardless_of_draft_status():
         client = cron_mod.app.test_client()
         resp = client.get("/api/cron/sync-games")
 
-    assert resp.get_json() == {"synced": 2}
+    # comp "c1" has no "league" key, so sport_key(None) is None and the odds
+    # block finds nothing to refresh -- odds_refreshed stays 0.
+    assert resp.get_json() == {"synced": 2, "odds_refreshed": 0}
     # Pending survivor pool: resolve_and_apply must run even though its
     # draft_status is still 'pending' (survivor pools have no draft phase).
     mock_resolve.assert_called_once()
@@ -278,3 +280,40 @@ def test_sync_games_cron_resolves_survivor_pool_regardless_of_draft_status():
     # Complete draft pool: recalculate_standings runs as before.
     mock_recalc.assert_called_once_with("draft-complete")
     # Pending draft pool: neither path fires (no draft, no standings yet).
+
+
+# ---------------------------------------------------------------------------
+# Vercel cron entrypoint -- odds-refresh step (Stage 2a): daily, governor-gated.
+# ---------------------------------------------------------------------------
+
+_ACTIVE_COMP_NFL = [{"id": "c-nfl", "league": "nfl"}]
+
+
+def test_sync_games_cron_refreshes_odds_when_governor_allows():
+    from api.cron import sync_games as cron_mod
+
+    with patch.object(cron_mod, "get_service_client", return_value=_PoolsClient([])), \
+         patch.object(cron_mod, "competitions_for_active_pools", return_value=_ACTIVE_COMP_NFL), \
+         patch.object(cron_mod, "sync_competition_results", return_value=0), \
+         patch("services.odds.can_refresh", return_value=True), \
+         patch("services.odds.refresh_odds_lines") as mock_refresh:
+        client = cron_mod.app.test_client()
+        resp = client.get("/api/cron/sync-games")
+
+    mock_refresh.assert_called_once_with("nfl")
+    assert resp.get_json() == {"synced": 0, "odds_refreshed": 1}
+
+
+def test_sync_games_cron_skips_odds_refresh_when_governor_floor_hit():
+    from api.cron import sync_games as cron_mod
+
+    with patch.object(cron_mod, "get_service_client", return_value=_PoolsClient([])), \
+         patch.object(cron_mod, "competitions_for_active_pools", return_value=_ACTIVE_COMP_NFL), \
+         patch.object(cron_mod, "sync_competition_results", return_value=0), \
+         patch("services.odds.can_refresh", return_value=False), \
+         patch("services.odds.refresh_odds_lines") as mock_refresh:
+        client = cron_mod.app.test_client()
+        resp = client.get("/api/cron/sync-games")
+
+    mock_refresh.assert_not_called()
+    assert resp.get_json() == {"synced": 0, "odds_refreshed": 0}

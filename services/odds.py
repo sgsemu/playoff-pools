@@ -150,6 +150,7 @@ def refresh_odds_lines(league):
     api_key = os.environ.get("THE_ODDS_API_KEY", "").strip()
     if not api_key:
         return None
+    resp = None
     try:
         resp = requests.get(
             f"{_BASE}/{key}/odds",
@@ -165,6 +166,15 @@ def refresh_odds_lines(league):
         resp.raise_for_status()
         data = resp.json()
     except Exception:
+        # The Odds API sends x-requests-remaining/-used on error responses
+        # too (401 OUT_OF_USAGE_CREDITS, 429, ...), not just 2xx. Recording
+        # it here -- whenever a response object actually exists, even though
+        # raise_for_status() raised -- is what makes can_refresh() a real
+        # preventive guard instead of only updating after a successful call.
+        # A connection-level failure (timeout, DNS, ...) never produces a
+        # response object, so resp stays None and there's nothing to record.
+        if resp is not None:
+            _record_governor(resp)
         return None
     _cache_put(f"oddsapi:{key}", data)
     _record_governor(resp)

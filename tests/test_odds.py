@@ -364,6 +364,35 @@ def test_refresh_odds_lines_no_api_key_returns_none_without_calling_api():
     mock_get.assert_not_called()
 
 
+def test_refresh_odds_lines_records_governor_on_error_response_and_returns_none():
+    # The Odds API sends x-requests-remaining/-used on error responses too
+    # (e.g. 401 OUT_OF_USAGE_CREDITS, 429) -- the governor must still be
+    # recorded so can_refresh() becomes preventive instead of only updating
+    # after a successful call.
+    import requests as requests_mod
+
+    fake_resp = MagicMock()
+    fake_resp.headers = {"x-requests-remaining": "0", "x-requests-used": "500"}
+    fake_resp.raise_for_status.side_effect = requests_mod.exceptions.HTTPError(
+        "401 Client Error", response=fake_resp
+    )
+    fake_client = _fake_supabase_client({})
+
+    with patch.dict(os.environ, {"THE_ODDS_API_KEY": "test-key"}):
+        with patch("services.odds.get_service_client", return_value=fake_client):
+            with patch("services.odds.requests.get", return_value=fake_resp) as mock_get:
+                result = refresh_odds_lines("nfl")
+
+    assert result is None
+    mock_get.assert_called_once()
+    upserted = fake_client._captured_upserts
+    keys = {row["cache_key"] for row in upserted}
+    assert keys == {"oddsapi:_meta"}  # no events row written, only the governor meta
+    meta_row = next(r for r in upserted if r["cache_key"] == "oddsapi:_meta")
+    assert meta_row["payload"]["remaining"] == 0
+    assert meta_row["payload"]["used"] == 500
+
+
 # ---------------------------------------------------------------------------
 # credit governor -- can_refresh / credits_remaining
 # ---------------------------------------------------------------------------
