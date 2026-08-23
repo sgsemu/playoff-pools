@@ -1459,6 +1459,10 @@ def test_survivor_pick_view_renders_odds_toggle_and_insights_strip(
 
     assert "Odds ▾" in html
     assert 'id="spick-odds-g1"' in html
+    # onclick must be single-quoted so the tojson'd (double-quoted) game id
+    # doesn't terminate the attribute and break the toggle (regression guard).
+    assert "onclick='toggleGameOdds(" in html
+    assert 'onclick="toggleGameOdds(' not in html
     assert "This week" in html
     assert 'id="spick-insights-cards"' in html
 

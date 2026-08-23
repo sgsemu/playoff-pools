@@ -54,7 +54,7 @@ both callers can wrap it in whatever chrome fits their page. #}
         <div class="spick-game-meta">
             {{ g.kickoff_label }}
             {% if g.early_lock %}<span class="spick-badge">⚡ {{ g.early_lock_label }} — locks early</span>{% endif %}
-            <button type="button" class="spick-odds-toggle" onclick="toggleGameOdds({{ g.espn_game_id | tojson }})">Odds ▾</button>
+            <button type="button" class="spick-odds-toggle" onclick='toggleGameOdds({{ g.espn_game_id | tojson }})'>Odds ▾</button>
         </div>
         <div class="spick-matchup">
             {% for team in (g.away, g.home) %}
