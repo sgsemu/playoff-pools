@@ -124,8 +124,8 @@ def forgot():
             # A mail-provider failure must not 500 the user (or leak which
             # emails are registered). Log it for diagnosis and still show the
             # generic message. NOTE: if this fires in prod, the reset email
-            # isn't actually being delivered — check RESEND_API_KEY and that
-            # the FROM sender domain is verified in Resend.
+            # isn't actually being delivered — check SMTP_USER/SMTP_PASSWORD
+            # (Gmail App Password) are set correctly.
             current_app.logger.error("password reset email failed for %s: %s", email, e)
 
     # Always show the same message, whether or not the account exists,
