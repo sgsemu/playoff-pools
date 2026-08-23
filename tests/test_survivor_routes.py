@@ -378,6 +378,33 @@ def test_assign_pick_with_already_used_team_returns_400(mock_sb, authed_client):
 # Commissioner: record_buyback_for
 # ---------------------------------------------------------------------------
 
+@patch("routes.pools.get_addable_players")
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_shows_add_players_to_creator(mock_sb, mock_addable, authed_client):
+    tables = _base_tables(creator_id="test-uuid")  # authed user is the creator
+    tables["pools"][0]["draft_status"] = "pending"
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+    mock_addable.return_value = [{"id": "u-ben", "display_name": "Ben"}]
+
+    html = authed_client.get("/pool/pool-1/survivor").get_data(as_text=True)
+    assert "Add players you've played with" in html
+    assert "Ben" in html
+    assert 'action="/pool/pool-1/members/add"' in html
+
+
+@patch("routes.pools.get_addable_players")
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_hides_add_players_from_non_creator(mock_sb, mock_addable, authed_client):
+    tables = _base_tables(creator_id="someone-else")  # authed user is NOT creator
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+    mock_addable.return_value = [{"id": "u-ben", "display_name": "Ben"}]
+
+    html = authed_client.get("/pool/pool-1/survivor").get_data(as_text=True)
+    assert "Add players you've played with" not in html
+
+
 @patch("routes.survivor.get_service_client")
 def test_buyback_for_by_creator_bypasses_window_and_reinstates(mock_sb, authed_client):
     tables = _base_tables(creator_id="test-uuid")
