@@ -169,18 +169,12 @@ async function pickTeam(teamRef, espnGameId, week) {
 }
 window.pickTeam = pickTeam;
 
-// --- Per-game odds panel + insights strip toggles ---
+// --- Per-game odds panel toggle ---
 function toggleGameOdds(gameId) {
     const panel = document.getElementById(`spick-odds-${gameId}`);
     if (panel) panel.hidden = !panel.hidden;
 }
 window.toggleGameOdds = toggleGameOdds;
-
-function toggleInsights() {
-    const cards = document.getElementById("spick-insights-cards");
-    if (cards) cards.hidden = !cards.hidden;
-}
-window.toggleInsights = toggleInsights;
 
 // --- Lock countdown ---
 function spickUpdateCountdown() {

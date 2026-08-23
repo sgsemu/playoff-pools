@@ -1323,12 +1323,13 @@ def _odds_pick_tables():
 
 
 @patch("routes.survivor.bookmakers")
+@patch("routes.survivor.featured_prop")
 @patch("routes.survivor.best_total")
 @patch("routes.survivor.best_by_outcome")
 @patch("routes.survivor.best_spread_by_team")
 @patch("routes.survivor.get_event_for_game")
 def test_pick_board_data_attaches_odds_bundle(
-    mock_get_event, mock_spreads, mock_ml, mock_total, mock_books
+    mock_get_event, mock_spreads, mock_ml, mock_total, mock_prop, mock_books
 ):
     sb = FakeSb(_odds_pick_tables())
     mock_get_event.return_value = {"id": "evt1"}  # only needs to be truthy
@@ -1342,6 +1343,7 @@ def test_pick_board_data_attaches_odds_bundle(
         "over": {"price": -110, "book_key": "dk", "book_name": "DraftKings"},
         "under": {"price": -105, "book_key": "fd", "book_name": "FanDuel"},
     }
+    mock_prop.return_value = {"label": "Anytime TD", "player": "Travis Kelce", "price": 145}
     mock_books.return_value = [
         {"key": "draftkings", "name": "DraftKings", "referral_url": "https://dk.example/ref"},
         {"key": "fanduel", "name": "FanDuel", "referral_url": ""},  # no referral -> excluded
@@ -1359,91 +1361,53 @@ def test_pick_board_data_attaches_odds_bundle(
     assert odds["total"]["point"] == 47.5
     # Only the bookmaker with a referral_url shows up in the referral list.
     assert odds["books"] == [{"name": "DraftKings", "referral_url": "https://dk.example/ref"}]
+    # featured_prop is resolved from the same (already-fetched) odds_event id
+    # -- no extra fetch beyond the cache read -- and passed through as-is.
+    assert odds["prop"] == {"label": "Anytime TD", "player": "Travis Kelce", "price": 145}
+    mock_prop.assert_called_once_with("evt1")
 
     assert game["home"]["is_favorite"] is True
     assert game["away"]["is_favorite"] is False
 
 
 @patch("routes.survivor.bookmakers")
+@patch("routes.survivor.featured_prop")
 @patch("routes.survivor.best_total")
 @patch("routes.survivor.best_by_outcome")
 @patch("routes.survivor.best_spread_by_team")
 @patch("routes.survivor.get_event_for_game")
-def test_pick_board_data_insights_safest_available_excludes_used_team(
-    mock_get_event, mock_spreads, mock_ml, mock_total, mock_books
+def test_pick_board_data_prop_is_none_when_no_odds_event(
+    mock_get_event, mock_spreads, mock_ml, mock_total, mock_prop, mock_books
 ):
-    # Two games this week: Chiefs (-7, biggest favorite) @ Bills, and
-    # Cowboys (-2, coin-flip-ish) @ Eagles. The viewer already used the
-    # Chiefs in an earlier week, so "safest available" must skip them and
-    # fall through to the Cowboys even though Chiefs are the bigger favorite
-    # (and therefore still "biggest spread").
-    tables = _base_tables()
-    tables["teams"] = [
-        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC",
-         "name": "Kansas City Chiefs", "competition_id": "c1"},
-        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF",
-         "name": "Buffalo Bills", "competition_id": "c1"},
-        {"id": "team-C", "ext_id": "ext-C", "abbreviation": "DAL",
-         "name": "Dallas Cowboys", "competition_id": "c1"},
-        {"id": "team-D", "ext_id": "ext-D", "abbreviation": "PHI",
-         "name": "Philadelphia Eagles", "competition_id": "c1"},
-    ]
-    tables["competitions"] = [{"id": "c1", "league": "nfl"}]
-    tables["game_results"] = [
-        {"espn_game_id": "g1", "competition_id": "c1", "week": 2,
-         "kickoff_at": "2099-01-11T18:00:00+00:00",
-         "home_team_id": "ext-A", "away_team_id": "ext-B"},
-        {"espn_game_id": "g2", "competition_id": "c1", "week": 2,
-         "kickoff_at": "2099-01-11T18:00:00+00:00",
-         "home_team_id": "ext-C", "away_team_id": "ext-D"},
-    ]
-    tables["survivor_entries"] = [{"id": "e1", "pool_id": "pool-1", "member_id": "m1"}]
-    tables["survivor_picks"] = [
-        # Week 1 pick used the Chiefs -- unusable again this (week 2) board.
-        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A",
-         "espn_game_id": "g0", "set_by": "member", "override_note": None},
-    ]
-    sb = FakeSb(tables)
-
-    def _spreads_for(event):
-        if event.get("id") == "g1":
-            return {"Kansas City Chiefs": -7.0, "Buffalo Bills": 7.0}
-        return {"Dallas Cowboys": -2.0, "Philadelphia Eagles": 2.0}
-
-    mock_get_event.side_effect = lambda game: (
-        {"id": "g1"} if game["home"]["name"] == "Kansas City Chiefs" else {"id": "g2"}
-    )
-    mock_spreads.side_effect = _spreads_for
+    # No matching Odds API event for this game -- featured_prop must not
+    # even be called (nothing to key the cache lookup on).
+    sb = FakeSb(_odds_pick_tables())
+    mock_get_event.return_value = None
+    mock_spreads.return_value = {}
     mock_ml.return_value = {}
     mock_total.return_value = None
     mock_books.return_value = []
 
     data = _pick_board_data(sb, "pool-1", {"id": "m1"})
 
-    insights = data["insights"]
-    # Biggest spread ignores "used" status -- still the Chiefs.
-    assert insights["biggest_spread"]["team"] == "Chiefs"
-    assert insights["biggest_spread"]["spread"] == -7.0
-    # Safest available must skip the Chiefs (already used) and fall to the
-    # next-biggest favorite, the Cowboys.
-    assert insights["safest_available"]["team"] == "Cowboys"
-    assert insights["safest_available"]["spread"] == -2.0
-    # Coin flip is the smallest |spread| game -- also the Cowboys/Eagles game.
-    assert insights["coin_flip"]["spread"] == 2.0
+    assert data["games"][0]["odds"]["prop"] is None
+    mock_prop.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Pick section render: Odds toggle, "This week" strip, minimal favorite cue
+# Pick section render: Odds toggle, minimal favorite cue, "This week" strip
+# is GONE, prop line shows when present.
 # ---------------------------------------------------------------------------
 
 @patch("routes.survivor.bookmakers")
+@patch("routes.survivor.featured_prop")
 @patch("routes.survivor.best_total")
 @patch("routes.survivor.best_by_outcome")
 @patch("routes.survivor.best_spread_by_team")
 @patch("routes.survivor.get_event_for_game")
 @patch("routes.survivor.get_service_client")
-def test_survivor_pick_view_renders_odds_toggle_and_insights_strip(
-    mock_sb, mock_get_event, mock_spreads, mock_ml, mock_total, mock_books, authed_client
+def test_survivor_pick_view_renders_odds_toggle_no_insights_strip(
+    mock_sb, mock_get_event, mock_spreads, mock_ml, mock_total, mock_prop, mock_books, authed_client
 ):
     sb = FakeSb(_odds_pick_tables())
     mock_sb.return_value = sb
@@ -1451,6 +1415,7 @@ def test_survivor_pick_view_renders_odds_toggle_and_insights_strip(
     mock_spreads.return_value = {"Kansas City Chiefs": -3.5, "Buffalo Bills": 3.5}
     mock_ml.return_value = {}
     mock_total.return_value = None
+    mock_prop.return_value = {"label": "Anytime TD", "player": "Travis Kelce", "price": 145}
     mock_books.return_value = []
 
     resp = authed_client.get("/pool/pool-1/survivor/pick")
@@ -1463,11 +1428,43 @@ def test_survivor_pick_view_renders_odds_toggle_and_insights_strip(
     # doesn't terminate the attribute and break the toggle (regression guard).
     assert "onclick='toggleGameOdds(" in html
     assert 'onclick="toggleGameOdds(' not in html
-    assert "This week" in html
-    assert 'id="spick-insights-cards"' in html
+
+    # "This week" insights strip is gone entirely.
+    assert "This week" not in html
+    assert "spick-insights" not in html
+    assert "toggleInsights" not in html
+
+    # Featured prop line renders in the Odds panel.
+    assert "Anytime TD: Travis Kelce +145" in html
 
     # Minimal favorite cue: the favorite (Chiefs, -3.5) shows its spread,
     # the underdog (Bills) shows no inline number.
     assert 'spick-spread spick-spread-muted">-3.5' in html
     away_block = html.split('data-team-ref="team-B"', 1)[1].split("</button>", 1)[0]
     assert "spick-spread" not in away_block
+
+
+@patch("routes.survivor.bookmakers")
+@patch("routes.survivor.featured_prop")
+@patch("routes.survivor.best_total")
+@patch("routes.survivor.best_by_outcome")
+@patch("routes.survivor.best_spread_by_team")
+@patch("routes.survivor.get_event_for_game")
+@patch("routes.survivor.get_service_client")
+def test_survivor_pick_view_omits_prop_line_when_no_prop(
+    mock_sb, mock_get_event, mock_spreads, mock_ml, mock_total, mock_prop, mock_books, authed_client
+):
+    sb = FakeSb(_odds_pick_tables())
+    mock_sb.return_value = sb
+    mock_get_event.return_value = {"id": "evt1"}
+    mock_spreads.return_value = {"Kansas City Chiefs": -3.5, "Buffalo Bills": 3.5}
+    mock_ml.return_value = {}
+    mock_total.return_value = None
+    mock_prop.return_value = None
+    mock_books.return_value = []
+
+    resp = authed_client.get("/pool/pool-1/survivor/pick")
+    html = resp.get_data(as_text=True)
+
+    assert "Interesting bet" not in html
+    assert "Anytime TD" not in html
