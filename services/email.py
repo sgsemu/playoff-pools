@@ -53,6 +53,23 @@ def send_auction_alert(to_email, pool_name, pool_id, team_name):
     })
 
 
+def send_password_reset(to_email, reset_url):
+    return resend.Emails.send({
+        "from": FROM_EMAIL,
+        "to": [to_email],
+        "subject": "Reset your Playoff Pools password",
+        "html": f"""
+        <h2>Reset your password</h2>
+        <p>We received a request to reset your Playoff Pools password. Click the button below to choose a new one.</p>
+        <p><a href="{reset_url}"
+               style="background:#7c6ef0;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">
+            Reset Password
+        </a></p>
+        <p>This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
+        """
+    })
+
+
 def send_deadline_reminder(to_email, pool_name, pool_id, hours_left):
     return resend.Emails.send({
         "from": FROM_EMAIL,
