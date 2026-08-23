@@ -10,36 +10,6 @@ both callers can wrap it in whatever chrome fits their page. #}
 <div class="empty-state"><p>No games scheduled yet — check back once this week's slate is ingested.</p></div>
 {% else %}
 
-{% set ins = data.insights %}
-{% if ins and (ins.safest_available or ins.coin_flip or ins.biggest_spread) %}
-<div class="spick-insights" id="spick-insights">
-    <button type="button" class="spick-insights-toggle" onclick="toggleInsights()">This week ▾</button>
-    <div class="spick-insights-cards" id="spick-insights-cards">
-        {% if ins.safest_available %}
-        <div class="spick-insight-card">
-            <div class="spick-insight-label">Safest available</div>
-            <div class="spick-insight-body"><b>{{ ins.safest_available.team }}</b> {{ '%.1f' | format(ins.safest_available.spread) }}</div>
-            <div class="spick-insight-sub">{{ ins.safest_available.matchup }}</div>
-        </div>
-        {% endif %}
-        {% if ins.coin_flip %}
-        <div class="spick-insight-card">
-            <div class="spick-insight-label">Coin flip</div>
-            <div class="spick-insight-body">{{ ins.coin_flip.matchup }}</div>
-            <div class="spick-insight-sub">±{{ '%.1f' | format(ins.coin_flip.spread) }}</div>
-        </div>
-        {% endif %}
-        {% if ins.biggest_spread %}
-        <div class="spick-insight-card">
-            <div class="spick-insight-label">Biggest spread</div>
-            <div class="spick-insight-body"><b>{{ ins.biggest_spread.team }}</b> {{ '%.1f' | format(ins.biggest_spread.spread) }}</div>
-            <div class="spick-insight-sub">{{ ins.biggest_spread.matchup }}</div>
-        </div>
-        {% endif %}
-    </div>
-</div>
-{% endif %}
-
 <div class="spick-lockbar" id="spick-lockbar" data-week-lock-at="{{ data.week_lock_at | tojson }}">
     <span><b>Week {{ data.week }}</b> — pick one winner</span>
     <span id="spick-countdown">
@@ -96,6 +66,12 @@ both callers can wrap it in whatever chrome fits their page. #}
                 <span class="spick-odds-label">Total</span>
                 <span class="spick-odds-val">{% if g.odds.total %}O/U {{ g.odds.total.point }}{% else %}—{% endif %}</span>
             </div>
+            {% if g.odds.prop %}
+            <div class="spick-odds-row">
+                <span class="spick-odds-label">Interesting bet</span>
+                <span class="spick-odds-val">🎯 {{ g.odds.prop.label }}: {{ g.odds.prop.player }} {{ '%+d' | format(g.odds.prop.price) }}</span>
+            </div>
+            {% endif %}
             {% if g.odds.books %}
             <div class="spick-odds-books">
                 {% for b in g.odds.books %}

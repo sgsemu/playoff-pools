@@ -271,8 +271,10 @@ def test_sync_games_cron_resolves_survivor_pool_regardless_of_draft_status():
         resp = client.get("/api/cron/sync-games")
 
     # comp "c1" has no "league" key, so sport_key(None) is None and the odds
-    # block finds nothing to refresh -- odds_refreshed stays 0.
-    assert resp.get_json() == {"synced": 2, "odds_refreshed": 0}
+    # block finds nothing to refresh -- odds_refreshed stays 0. Same comp has
+    # no "league" == "nfl" either, so the props block's nfl_comp_ids is
+    # empty and props_refreshed stays 0 regardless of what day it is.
+    assert resp.get_json() == {"synced": 2, "odds_refreshed": 0, "props_refreshed": 0}
     # Pending survivor pool: resolve_and_apply must run even though its
     # draft_status is still 'pending' (survivor pools have no draft phase).
     mock_resolve.assert_called_once()
@@ -301,7 +303,12 @@ def test_sync_games_cron_refreshes_odds_when_governor_allows():
         resp = client.get("/api/cron/sync-games")
 
     mock_refresh.assert_called_once_with("nfl")
-    assert resp.get_json() == {"synced": 0, "odds_refreshed": 1}
+    # props_refreshed stays 0 here regardless of real-world weekday: the NFL
+    # comp is active so _current_week_odds_event_ids would run, but
+    # _PoolsClient only stubs the "pools" table -- the AssertionError it
+    # raises on "game_results" is swallowed by the props block's broad
+    # except, same as any other props failure.
+    assert resp.get_json() == {"synced": 0, "odds_refreshed": 1, "props_refreshed": 0}
 
 
 def test_sync_games_cron_skips_odds_refresh_when_governor_floor_hit():
@@ -316,4 +323,84 @@ def test_sync_games_cron_skips_odds_refresh_when_governor_floor_hit():
         resp = client.get("/api/cron/sync-games")
 
     mock_refresh.assert_not_called()
-    assert resp.get_json() == {"synced": 0, "odds_refreshed": 0}
+    # can_refresh is patched to always return False, which also gates the
+    # props block (same governor check) -- props_refreshed stays 0.
+    assert resp.get_json() == {"synced": 0, "odds_refreshed": 0, "props_refreshed": 0}
+
+
+# ---------------------------------------------------------------------------
+# Vercel cron entrypoint -- props-refresh step (Thu-Sun, governor-gated).
+# _current_week_odds_event_ids is patched directly in these tests (rather
+# than exercised through a fake game_results/teams table) so the assertions
+# stay focused on the weekday + governor gating this step adds; that
+# resolver's own week-picking logic isn't covered here.
+# ---------------------------------------------------------------------------
+
+import datetime as _dt
+
+
+def _et(y, m, d, hh=12):
+    from zoneinfo import ZoneInfo
+    return _dt.datetime(y, m, d, hh, 0, tzinfo=ZoneInfo("America/New_York"))
+
+
+def test_sync_games_cron_refreshes_props_on_thursday_when_governor_allows():
+    from api.cron import sync_games as cron_mod
+
+    thursday = _et(2026, 8, 20)  # 2026-08-20 is a Thursday
+    assert thursday.strftime("%a") == "Thu"
+
+    with patch.object(cron_mod, "get_service_client", return_value=_PoolsClient([])), \
+         patch.object(cron_mod, "competitions_for_active_pools", return_value=_ACTIVE_COMP_NFL), \
+         patch.object(cron_mod, "sync_competition_results", return_value=0), \
+         patch.object(cron_mod, "_now_et", return_value=thursday), \
+         patch.object(cron_mod, "_current_week_odds_event_ids", return_value=["evt1", "evt2"]), \
+         patch("services.odds.can_refresh", return_value=True), \
+         patch("services.odds.refresh_odds_props") as mock_refresh_props, \
+         patch("services.odds.refresh_odds_lines"):
+        client = cron_mod.app.test_client()
+        resp = client.get("/api/cron/sync-games")
+
+    mock_refresh_props.assert_called_once_with("nfl", ["evt1", "evt2"])
+    assert resp.get_json()["props_refreshed"] == 2
+
+
+def test_sync_games_cron_skips_props_on_a_non_thu_sun_day():
+    from api.cron import sync_games as cron_mod
+
+    monday = _et(2026, 8, 17)  # 2026-08-17 is a Monday
+    assert monday.strftime("%a") == "Mon"
+
+    with patch.object(cron_mod, "get_service_client", return_value=_PoolsClient([])), \
+         patch.object(cron_mod, "competitions_for_active_pools", return_value=_ACTIVE_COMP_NFL), \
+         patch.object(cron_mod, "sync_competition_results", return_value=0), \
+         patch.object(cron_mod, "_now_et", return_value=monday), \
+         patch.object(cron_mod, "_current_week_odds_event_ids", return_value=["evt1"]), \
+         patch("services.odds.can_refresh", return_value=True), \
+         patch("services.odds.refresh_odds_props") as mock_refresh_props, \
+         patch("services.odds.refresh_odds_lines"):
+        client = cron_mod.app.test_client()
+        resp = client.get("/api/cron/sync-games")
+
+    mock_refresh_props.assert_not_called()
+    assert resp.get_json()["props_refreshed"] == 0
+
+
+def test_sync_games_cron_skips_props_on_thursday_when_governor_floor_hit():
+    from api.cron import sync_games as cron_mod
+
+    thursday = _et(2026, 8, 20)
+
+    with patch.object(cron_mod, "get_service_client", return_value=_PoolsClient([])), \
+         patch.object(cron_mod, "competitions_for_active_pools", return_value=_ACTIVE_COMP_NFL), \
+         patch.object(cron_mod, "sync_competition_results", return_value=0), \
+         patch.object(cron_mod, "_now_et", return_value=thursday), \
+         patch.object(cron_mod, "_current_week_odds_event_ids", return_value=["evt1"]), \
+         patch("services.odds.can_refresh", return_value=False), \
+         patch("services.odds.refresh_odds_props") as mock_refresh_props, \
+         patch("services.odds.refresh_odds_lines"):
+        client = cron_mod.app.test_client()
+        resp = client.get("/api/cron/sync-games")
+
+    mock_refresh_props.assert_not_called()
+    assert resp.get_json()["props_refreshed"] == 0

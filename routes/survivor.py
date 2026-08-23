@@ -25,7 +25,7 @@ from services.survivor_data import (
     TeamAlreadyUsed,
     _is_unique_violation,
 )
-from services.odds import get_event_for_game, best_spread_by_team, best_by_outcome, best_total
+from services.odds import get_event_for_game, best_spread_by_team, best_by_outcome, best_total, featured_prop
 from services.bookmakers import bookmakers
 from services.team_colors import team_logo_url
 
@@ -195,12 +195,13 @@ def _match_price_by_name(prices_by_name, name):
     return None
 
 
-def _game_odds_view(odds_event, home_name, away_name, home_point, away_point, books):
+def _game_odds_view(odds_event, home_name, away_name, home_point, away_point, books, prop):
     """Build the per-game `odds` bundle the template renders in the "Odds ▾"
     panel: moneyline (both teams, best price + book), spread (both teams --
     reuses the points already computed for the inline favorite cue, no
-    second lookup), total (O/U point), and the referral book list. Safe to
-    call with odds_event=None (moneyline/total come back empty/None)."""
+    second lookup), total (O/U point), the referral book list, and the
+    featured anytime-TD prop (or None). Safe to call with odds_event=None
+    (moneyline/total come back empty/None)."""
     moneyline = best_by_outcome(odds_event) if odds_event else {}
     total = best_total(odds_event) if odds_event else None
     return {
@@ -211,64 +212,7 @@ def _game_odds_view(odds_event, home_name, away_name, home_point, away_point, bo
         "spread": {"home": home_point, "away": away_point},
         "total": total,
         "books": books,
-    }
-
-
-def _compute_insights(games, used_refs):
-    """Three survivor-framed cards from this week's games:
-    - safest_available: biggest favorite (most negative spread) among teams
-      the viewer has NOT already used elsewhere this season.
-    - coin_flip: the game with the smallest |spread| (closest to a pick'em).
-    - biggest_spread: the largest favorite this week overall (used teams
-      included -- it's a blowout callout, not a pick suggestion).
-    Any/all may be None (e.g. no odds data this week). `used_refs` is the
-    set of team_refs the viewer has used in a week other than this one."""
-    favorite_candidates = []  # dicts: spread, team_ref, nickname, matchup
-    coinflip_candidates = []  # dicts: abs_spread, matchup
-
-    for g in games:
-        home, away = g["home"], g["away"]
-        matchup = f"{away['nickname']} @ {home['nickname']}"
-        for team in (home, away):
-            if team.get("spread") is not None and team["spread"] < 0:
-                favorite_candidates.append({
-                    "spread": team["spread"],
-                    "team_ref": team["team_ref"],
-                    "nickname": team["nickname"],
-                    "matchup": matchup,
-                })
-        spread_val = home.get("spread")
-        if spread_val is None:
-            spread_val = away.get("spread")
-        if spread_val is not None:
-            coinflip_candidates.append({"abs_spread": abs(spread_val), "matchup": matchup})
-
-    biggest_spread = None
-    if favorite_candidates:
-        b = min(favorite_candidates, key=lambda c: c["spread"])
-        biggest_spread = {
-            "label": "Biggest spread", "team": b["nickname"],
-            "matchup": b["matchup"], "spread": b["spread"],
-        }
-
-    safest_pool = [c for c in favorite_candidates if c["team_ref"] not in used_refs]
-    safest_available = None
-    if safest_pool:
-        s = min(safest_pool, key=lambda c: c["spread"])
-        safest_available = {
-            "label": "Safest available", "team": s["nickname"],
-            "matchup": s["matchup"], "spread": s["spread"],
-        }
-
-    coin_flip = None
-    if coinflip_candidates:
-        c = min(coinflip_candidates, key=lambda c: c["abs_spread"])
-        coin_flip = {"label": "Coin flip", "matchup": c["matchup"], "spread": c["abs_spread"]}
-
-    return {
-        "safest_available": safest_available,
-        "coin_flip": coin_flip,
-        "biggest_spread": biggest_spread,
+        "prop": prop,
     }
 
 
@@ -281,7 +225,7 @@ def _pick_board_data(sb, pool_id, member):
     week = _resolve_current_week(sb, comp_ids)
     if week is None:
         return {"week": None, "week_lock_at": None, "locked": False,
-                "games": [], "current_pick": None, "insights": None}
+                "games": [], "current_pick": None}
 
     games_rows = sb.table("game_results").select(
         "espn_game_id, competition_id, week, kickoff_at, home_team_id, away_team_id"
@@ -363,6 +307,7 @@ def _pick_board_data(sb, pool_id, member):
         home_point, away_point = _team_spread_points(
             odds_event, home_team.get("name"), away_team.get("name")
         )
+        prop = featured_prop(odds_event["id"]) if odds_event and odds_event.get("id") else None
 
         home_view = _team_view(home_team, home_point)
         away_view = _team_view(away_team, away_point)
@@ -382,7 +327,7 @@ def _pick_board_data(sb, pool_id, member):
             "away": away_view,
             "odds": _game_odds_view(
                 odds_event, home_team.get("name"), away_team.get("name"),
-                home_point, away_point, referral_books,
+                home_point, away_point, referral_books, prop,
             ),
         })
 
@@ -392,7 +337,6 @@ def _pick_board_data(sb, pool_id, member):
         "locked": locked,
         "games": games,
         "current_pick": current_pick_view,
-        "insights": _compute_insights(games, set(used_week_by_ref.keys())),
     }
 
 

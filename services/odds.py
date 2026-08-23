@@ -30,6 +30,12 @@ Public API:
     game_odds(event)           -> {moneyline, spread, total} bundle
     enrich_calendar_with_best_odds(calendar)         -> mutates in place
     get_event_for_game(game)   -> matching Odds API event or None
+    refresh_odds_props(league, odds_event_ids)       -> live per-event props
+                                   call + cache write; cron-only, governor
+                                   re-checked before EVERY event (props are
+                                   the expensive path)
+    featured_prop(event_id)    -> {label, player, price} anytime-TD pick,
+                                   or None; cache-only, see fetch_odds
 """
 import os
 from datetime import datetime, timezone
@@ -201,6 +207,53 @@ def _record_governor(resp):
     )
 
 
+def refresh_odds_props(league, odds_event_ids):
+    """Call The Odds API live, once per event id in `odds_event_ids`, for the
+    `player_anytime_td` market and cache each response under
+    `oddsapi_props:<event_id>`. The ONLY function that hits The Odds API's
+    per-event /odds endpoint -- meant to be invoked by the scheduled cron,
+    never on a request path.
+
+    Props are the expensive path: one credit-consuming call PER EVENT,
+    unlike refresh_odds_lines() which is one call per league. So the credit
+    governor is re-checked before EVERY call (not just once up front) and
+    the loop stops the instant can_refresh(60) goes False, rather than
+    burning through the rest of the slate. Never raises -- a single event's
+    failure (or a governor stop) just leaves that event's cache stale."""
+    key = sport_key(league)
+    if not key:
+        return
+    api_key = os.environ.get("THE_ODDS_API_KEY", "").strip()
+    if not api_key:
+        return
+    for event_id in odds_event_ids or []:
+        if not can_refresh(60):
+            break
+        resp = None
+        try:
+            resp = requests.get(
+                f"{_BASE}/{key}/events/{event_id}/odds",
+                params={
+                    "apiKey": api_key,
+                    "regions": "us",
+                    "markets": "player_anytime_td",
+                    "oddsFormat": "american",
+                },
+                timeout=8,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception:
+            # Same rationale as refresh_odds_lines(): The Odds API sends the
+            # credit headers on error responses too, so record them whenever
+            # a response object exists even though raise_for_status() raised.
+            if resp is not None:
+                _record_governor(resp)
+            continue
+        _cache_put(f"oddsapi_props:{event_id}", data)
+        _record_governor(resp)
+
+
 def credits_remaining():
     """Last-known remaining Odds API credits (from the most recent
     refresh_odds_lines() response headers), or None if unknown (cache cold,
@@ -358,6 +411,38 @@ def get_event_for_game(game):
     h = _norm((game.get("home") or {}).get("name"))
     a = _norm((game.get("away") or {}).get("name"))
     return idx.get((h, a))
+
+
+def featured_prop(event_id):
+    """Cache-only read of the anytime-TD prop market for one Odds API event
+    id (see refresh_odds_props -- the only function allowed to call the
+    upstream per-event props endpoint; NEVER call the API here). Picks the
+    single "most interesting" outcome -- the shortest-priced (most likely)
+    scorer, i.e. the lowest decimal payout via _decimal() -- and returns
+    {"label": "Anytime TD", "player": <name>, "price": <american int>}.
+    Returns None when event_id is falsy, the cache is cold, or there's no
+    player_anytime_td market for this event."""
+    if not event_id:
+        return None
+    payload = _cache_get(f"oddsapi_props:{event_id}")
+    if not payload:
+        return None
+    best = None  # (decimal, american_price, player_name)
+    for book in payload.get("bookmakers", []) or []:
+        for market in book.get("markets", []) or []:
+            if market.get("key") != "player_anytime_td":
+                continue
+            for outcome in market.get("outcomes", []) or []:
+                name = outcome.get("name")
+                price = outcome.get("price")
+                d = _decimal(price)
+                if name is None or d is None:
+                    continue
+                if best is None or d < best[0]:
+                    best = (d, price, name)
+    if best is None:
+        return None
+    return {"label": "Anytime TD", "player": best[2], "price": best[1]}
 
 
 # ---------------------------------------------------------------------------
