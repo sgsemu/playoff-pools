@@ -379,6 +379,21 @@ def test_assign_pick_with_already_used_team_returns_400(mock_sb, authed_client):
 # ---------------------------------------------------------------------------
 
 @patch("routes.survivor.get_service_client")
+def test_survivor_rules_panel_shows_buyback_fee_and_free_players(mock_sb, authed_client):
+    cfg = {
+        "regular_buyback": {"weeks": [1, 6], "fee": 100},
+        "super_buyback": {"weeks": [7, 17], "fee": 500},
+        "free_early_buyback": {"weeks": [1, 2], "players": ["Randy", "Conor", "Ben"]},
+    }
+    sb = FakeSb(_base_tables(survivor_config=cfg))
+    mock_sb.return_value = sb
+    html = authed_client.get("/pool/pool-1/survivor").get_data(as_text=True)
+    assert "$100 each" in html
+    assert "Free buybacks in Weeks 1" in html
+    assert "Randy, Conor, Ben" in html
+
+
+@patch("routes.survivor.get_service_client")
 def test_survivor_board_has_live_update_hooks(mock_sb, authed_client):
     # The viewer's own current-week cell needs a stable id, and the pick
     # buttons need data-abbr, so survivor.js can reflect a just-saved pick in

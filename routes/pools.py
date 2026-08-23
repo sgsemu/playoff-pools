@@ -17,7 +17,7 @@ SURVIVOR_CONFIG_DEFAULTS = {
     "sunday_lock_et": "13:00",
     "mercy_after_week": 7,
     "final_week": 18,
-    "regular_buyback": {"weeks": [1, 6], "limit": None, "deadline": "sunday_1pm"},
+    "regular_buyback": {"weeks": [1, 6], "limit": None, "fee": 100, "deadline": "sunday_1pm"},
     "super_buyback": {"weeks": [7, 17], "limit": 1, "fee": 500, "deadline": "friday_2359_et"},
 }
 
