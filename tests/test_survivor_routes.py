@@ -378,6 +378,32 @@ def test_assign_pick_with_already_used_team_returns_400(mock_sb, authed_client):
 # Commissioner: record_buyback_for
 # ---------------------------------------------------------------------------
 
+@patch("routes.survivor.get_service_client")
+def test_survivor_board_has_live_update_hooks(mock_sb, authed_client):
+    # The viewer's own current-week cell needs a stable id, and the pick
+    # buttons need data-abbr, so survivor.js can reflect a just-saved pick in
+    # the Player Results grid without a reload.
+    tables = _base_tables(creator_id="test-uuid")
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "test-uuid", "users": {"display_name": "Sean"}}},
+    ]
+    tables["game_results"] = [
+        {"espn_game_id": "g1", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2099-09-10T18:00:00+00:00",
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+    html = authed_client.get("/pool/pool-1/survivor").get_data(as_text=True)
+    assert 'id="sb-own-w1"' in html   # viewer's own cell, targetable by survivor.js
+
+
 @patch("routes.pools.get_addable_players")
 @patch("routes.survivor.get_service_client")
 def test_survivor_board_shows_add_players_to_creator(mock_sb, mock_addable, authed_client):
