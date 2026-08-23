@@ -6,7 +6,7 @@ services/survivor_data.py. This module is the thin HTTP layer: auth guard,
 JSON parsing, and translating decisions into status codes.
 """
 from datetime import datetime, time
-from flask import Blueprint, request, jsonify, render_template, session
+from flask import Blueprint, request, jsonify, render_template, redirect, session
 from routes.auth import login_required
 from services.supabase_client import get_service_client
 from services.competitions import (
@@ -410,6 +410,16 @@ def survivor_board(pool_id):
     if not pool:
         return "Pool not found", 404
     pool = pool[0]
+    if pool.get("type") != "survivor":
+        # URL-editing guard: this route backfills survivor_entries and
+        # renders the survivor board, neither of which is valid for a
+        # non-survivor pool. Bail out before any of that runs.
+        return redirect(f"/pool/{pool_id}")
+
+    # Belt-and-suspenders: guarantee every pool_member has a survivor_entry
+    # before board_data reads survivor_entries, regardless of how the member
+    # was added (see _backfill_missing_entries docstring).
+    _backfill_missing_entries(sb, pool_id)
 
     data = board_data(sb, pool_id)
     # Display-only default for the header and the range of week columns
@@ -613,6 +623,26 @@ def _member_in_pool(sb, pool_id, member_id):
     return bool(sb.table("pool_members").select("id").eq(
         "id", member_id
     ).eq("pool_id", pool_id).execute().data)
+
+
+def _backfill_missing_entries(sb, pool_id):
+    """Belt-and-suspenders for add_member: ensure every pool_members row for
+    this pool has a matching survivor_entries row before the board reads
+    them. Covers any member added by a path that doesn't (yet, or ever)
+    create an entry itself -- idempotent via get_or_create_entry, and cheap
+    (two indexed reads) since it only inserts for members actually missing
+    one. Same active_from_week=1 caveat as add_member: acceptable pre-season,
+    since the current week isn't derivable here without extra queries."""
+    member_rows = sb.table("pool_members").select("id").eq(
+        "pool_id", pool_id
+    ).execute().data
+    existing_entries = sb.table("survivor_entries").select("member_id").eq(
+        "pool_id", pool_id
+    ).execute().data
+    has_entry = {e["member_id"] for e in existing_entries}
+    for m in member_rows:
+        if m["id"] not in has_entry:
+            get_or_create_entry(sb, pool_id, m["id"])
 
 
 @survivor_bp.route("/pool/<pool_id>/survivor/assign-pick", methods=["POST"])

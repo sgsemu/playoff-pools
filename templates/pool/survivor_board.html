@@ -139,9 +139,28 @@
     {% if commish %}
     {% include "pool/_survivor_commish.html" %}
     {% endif %}
+
+    <!-- Invite link: creator-only, pre-complete -- mirrors home.html. -->
+    {% if pool.creator_id == session.get('user_id') and pool.draft_status != 'complete' %}
+    <div class="invite-box" style="margin-top:24px;">
+        <label>Invite Link</label>
+        <div class="invite-link-row">
+            <input type="text" value="{{ config.APP_URL }}/join/{{ pool.invite_code }}" readonly id="invite-link">
+            <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('invite-link').value)">Copy</button>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if pool.creator_id == session.get('user_id') %}
+    <div class="pool-danger-zone">
+        <button type="button" class="btn btn-danger" onclick="deleteSurvivorPool()">Delete pool</button>
+    </div>
+    {% endif %}
 </div>
 
 <script>
+    window.POOL_ID = {{ pool_id | tojson }};
+
     function toggleSbDetail(entryId) {
         var row = document.getElementById('sb-detail-' + entryId);
         var caret = document.getElementById('sb-caret-' + entryId);
@@ -165,11 +184,16 @@
             panel.setAttribute('hidden', '');
         }
     }
+
+    function deleteSurvivorPool() {
+        if (!confirm('Delete this pool? This cannot be undone.')) return;
+        fetch('/api/pool/' + window.POOL_ID, {method: 'DELETE'})
+            .then(r => r.ok ? (window.location.href = '/dashboard') : r.json().then(j => alert(j.error || 'Delete failed')));
+    }
 </script>
 
 {% if pick_data %}
 <script>
-    window.POOL_ID = {{ pool_id | tojson }};
     window.CURRENT_WEEK = {{ pick_data.week | tojson }};
     window.INITIAL_PICK_DATA = {{ pick_data | tojson }};
 </script>

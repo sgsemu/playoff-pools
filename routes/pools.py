@@ -337,12 +337,25 @@ def add_member(pool_id):
         return jsonify({"error": "That user isn't someone you can add"}), 403
 
     try:
-        sb.table("pool_members").insert({
+        member = sb.table("pool_members").insert({
             "pool_id": pool_id, "user_id": user_id, "role": "member",
-        }).execute()
-        flash("Player added to the pool.", "success")
+        }).execute().data[0]
     except Exception:
         flash("That player is already in the pool.", "error")
+        return redirect(f"/pool/{pool_id}")
+
+    # Survivor pools key everything (board display, picks) off
+    # survivor_entries, not pool_members -- a member added here without one
+    # is invisible in Player Results. Create it now so the newly added
+    # member shows up immediately. (A member added mid-season still gets
+    # the DB default active_from_week=1 -- fine pre-season, since
+    # get_or_create_entry doesn't know the pool's current week.) Kept
+    # outside the insert's try/except so a failure here surfaces as a real
+    # error rather than the misleading "already in the pool" message.
+    if pool.get("type") == "survivor":
+        get_or_create_entry(sb, pool_id, member["id"])
+
+    flash("Player added to the pool.", "success")
     return redirect(f"/pool/{pool_id}")
 
 
@@ -400,11 +413,26 @@ def delete_pool(pool_id):
     if pool[0]["creator_id"] != session["user_id"]:
         return jsonify({"error": "Only the creator can delete a pool"}), 403
 
-    # Delete in order: picks/bids, standings, members, then pool
+    # Delete in order: picks/bids, standings, survivor tables, competitions
+    # link, members, then pool. Survivor rows aren't reachable by pool_id
+    # directly for picks/buybacks (they hang off survivor_entries via
+    # entry_id) so those are resolved via the pool's entry ids first. Done
+    # explicitly rather than relying solely on FK cascade so a survivor
+    # pool always deletes cleanly regardless of whether cascade is
+    # configured on every FK.
     sb.table("draft_picks").delete().eq("pool_id", pool_id).execute()
     sb.table("auction_bids").delete().eq("pool_id", pool_id).execute()
     sb.table("salary_rosters").delete().eq("pool_id", pool_id).execute()
     sb.table("pool_standings").delete().eq("pool_id", pool_id).execute()
+
+    entries = sb.table("survivor_entries").select("id").eq("pool_id", pool_id).execute().data
+    entry_ids = [e["id"] for e in entries]
+    if entry_ids:
+        sb.table("survivor_buybacks").delete().in_("entry_id", entry_ids).execute()
+        sb.table("survivor_picks").delete().in_("entry_id", entry_ids).execute()
+    sb.table("survivor_entries").delete().eq("pool_id", pool_id).execute()
+    sb.table("pool_competitions").delete().eq("pool_id", pool_id).execute()
+
     sb.table("pool_members").delete().eq("pool_id", pool_id).execute()
     sb.table("pools").delete().eq("id", pool_id).execute()
 
