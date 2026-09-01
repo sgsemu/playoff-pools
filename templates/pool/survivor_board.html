@@ -29,7 +29,7 @@
             {% set fw = free.get('weeks') or [1, 2] %}
             <li>Free buybacks in Weeks {{ fw[0] }}–{{ fw[1] }} (if they lose) for: {{ free.get('players') | join(', ') }}.</li>
             {% endif %}
-            <li>Weeks {{ sup_weeks[0] }}–{{ sup_weeks[1] }}: one Super BuyBack{% if sup.get('fee') %} (${{ sup.get('fee') }}){% endif %}, due by Friday 11:59 PM ET.</li>
+            <li>Weeks {{ sup_weeks[0] }}–{{ sup_weeks[1] }}: one Super BuyBack{% if sup.get('fee') %} (${{ sup.get('fee') }}){% endif %} — you must commit to it before that week's earliest game, not the usual Sunday deadline. Later in the season the earliest game can fall on a Wednesday or Thursday, so lock it in early.</li>
             <li>From Week {{ rules.get('mercy_after_week', 7) }} onward, the mercy rule can apply — co-winners are possible.</li>
             <li>Last one standing wins the pool.</li>
         </ul>
