@@ -23,7 +23,7 @@
             <li>A tie does not count as a win in this pool.</li>
             {% endif %}
             <li>One team per season — even a buyback pick can't reuse a team you've already picked.</li>
-            <li>Everyone's picks stay hidden until they lock, then appear shortly after. A pick locks when its game kicks off or at Sunday 1:00 PM ET, whichever comes first — so a pick in an earlier game (e.g. Thursday night) reveals right after that kickoff, and every other pick reveals just after Sunday 1:00 PM ET.</li>
+            <li>Everyone's picks stay hidden until the Sunday 1:00 PM ET games kick off — unless you picked an earlier game (e.g. Thursday night), in which case your pick reveals shortly after that kickoff.</li>
             <li>Weeks {{ reg_weeks[0] }}–{{ reg_weeks[1] }}: unlimited regular buybacks if you're eliminated{% if reg.get('fee') %} — ${{ reg.get('fee') }} each{% endif %}.</li>
             {% set free = rules.get('free_early_buyback') %}
             {% if free and free.get('players') %}
