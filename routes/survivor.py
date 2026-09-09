@@ -15,7 +15,7 @@ from services.competitions import (
     teams_by_ref,
     get_draftable_teams,
 )
-from services.survivor import ET, is_locked, buyback_option
+from services.survivor import ET, is_locked, pick_lock_at, buyback_option
 from services.survivor_data import (
     get_or_create_entry,
     submit_pick,
@@ -125,6 +125,48 @@ def _week_lock_at(sb, pool_id, week):
     if not week_sunday:
         return None
     return datetime.combine(week_sunday, time(13, 0), tzinfo=ET)
+
+
+def _reveal_maps(sb, comp_ids):
+    """One batched read of the pool's games -> (kickoff_by_game, sunday_by_week).
+
+    kickoff_by_game maps espn_game_id -> ET-aware kickoff datetime; sunday_by_week
+    maps week -> that week's Sunday date (same rule as _week_sunday: a real Sunday
+    among the week's kickoffs, else the earliest game's date). Together they drive
+    per-pick reveal: a pick is shown to other members once it has LOCKED, i.e.
+    now >= pick_lock_at(its game's kickoff, its week's Sunday). Reusing the lock
+    instant for reveal means an early-game pick (Thu/Fri/Sat) shows the moment that
+    game kicks off, every Sunday/Monday pick stays hidden until the Sunday 1 PM
+    anchor, and a pick is never revealed while it can still be changed."""
+    kickoff_by_game = {}
+    dates_by_week = {}
+    if not comp_ids:
+        return kickoff_by_game, {}
+    rows = sb.table("game_results").select(
+        "espn_game_id, week, kickoff_at"
+    ).in_("competition_id", comp_ids).execute().data
+    for r in rows:
+        dt = _parse_iso(r.get("kickoff_at"))
+        if not dt:
+            continue
+        dt = dt.astimezone(ET)
+        gid = r.get("espn_game_id")
+        if gid:
+            kickoff_by_game[gid] = dt
+        wk = r.get("week")
+        if wk is not None:
+            dates_by_week.setdefault(wk, []).append(dt.date())
+    sunday_by_week = {}
+    for wk, dates in dates_by_week.items():
+        sunday = next((d for d in dates if d.weekday() == 6), None)
+        # Normal weeks have a Sunday, so the anchor is that Sunday's 1 PM and a
+        # Wed/Thu/Sat pick reveals at its own (earlier) kickoff. Only a
+        # Sunday-LESS week hits the fallback; use the LATEST game date so the
+        # reveal anchor is never earlier than the submit-path lock (which falls
+        # back via _week_sunday), keeping reveal >= lock -- a pick is never
+        # shown while it can still be changed.
+        sunday_by_week[wk] = sunday or max(dates)
+    return kickoff_by_game, sunday_by_week
 
 
 def _team_nickname(name):
@@ -514,17 +556,33 @@ def survivor_board(pool_id):
         for ref, team in resolved_teams.items()
     }
 
-    # Per-week lock state, computed independently for EVERY week column the
-    # board shows, from that week's OWN lock instant (never from whether
-    # anyone has picked it yet). Conservative default: if we can't yet
-    # determine a week's lock instant (no game data ingested), treat it as
-    # NOT locked so the board keeps hiding rather than accidentally
-    # revealing early.
+    # Per-PICK reveal, computed from each pick's OWN game (never from whether
+    # anyone has picked a week yet). A pick is shown to other members only once
+    # it has locked -- now >= min(its game's kickoff, that week's Sunday 1 PM) --
+    # so an early-game pick (Thu/Fri/Sat) reveals the moment that game kicks off
+    # while every Sunday/Monday pick stays hidden until the Sunday 1 PM anchor.
+    # Conservative default: a pick whose game has no kickoff data yet stays
+    # hidden rather than leaking early. Stamped onto each pick dict for the
+    # template's `pick.revealed` gate.
     now = datetime.now(ET)
+    kickoff_by_game, sunday_by_week = _reveal_maps(sb, comp_ids)
+    for entry_picks in data["picks"].values():
+        for pick in entry_picks.values():
+            kickoff = kickoff_by_game.get(pick.get("espn_game_id"))
+            wk_sunday = sunday_by_week.get(pick.get("week"))
+            pick["revealed"] = bool(
+                kickoff and wk_sunday and now >= pick_lock_at(kickoff, wk_sunday)
+            )
+
+    # Per-week reveal, still used for the buyback (↩) marker only -- it flags a
+    # re-entry, not a team choice, so it reveals at the week's Sunday 1 PM anchor
+    # rather than per-pick. Same conservative default (no game data -> hidden).
     week_locked = {}
     for w in range(1, current_week + 1):
-        lock_at = _week_lock_at(sb, pool_id, w)
-        week_locked[w] = lock_at is not None and now >= lock_at
+        wk_sunday = sunday_by_week.get(w)
+        week_locked[w] = bool(
+            wk_sunday and now >= datetime.combine(wk_sunday, time(13, 0), tzinfo=ET)
+        )
     current_week_locked = week_locked.get(current_week, False)
 
     # A member always sees their OWN pick, even pre-lock -- only other

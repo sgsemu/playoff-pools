@@ -696,11 +696,11 @@ def test_survivor_board_hides_other_members_early_week_pick_before_lock(mock_sb,
          "pool_members": {"user_id": "bob-uuid", "users": {"display_name": "Bob"}}},
     ]
     tables["survivor_picks"] = [
-        # Week 1 -- fully graded, safely in the past.
-        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "result": "win", "set_by": "member"},
-        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "result": "loss", "set_by": "member"},
-        # Week 2 -- only Alice has picked, and week 2 hasn't locked yet.
-        {"id": "p3", "entry_id": "e1", "week": 2, "team_ref": "team-C", "result": None, "set_by": "member"},
+        # Week 1 -- fully graded, safely in the past (game g1).
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "espn_game_id": "g1", "result": "win", "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "espn_game_id": "g1", "result": "loss", "set_by": "member"},
+        # Week 2 -- only Alice has picked, and week 2's game (g2) hasn't locked yet.
+        {"id": "p3", "entry_id": "e1", "week": 2, "team_ref": "team-C", "espn_game_id": "g2", "result": None, "set_by": "member"},
     ]
     tables["game_results"] = [
         # Week 1 kicked off well in the past -> week 1 is locked/revealed.
@@ -722,6 +722,10 @@ def test_survivor_board_hides_other_members_early_week_pick_before_lock(mock_sb,
     assert resp.status_code == 200
     bob_html = resp.get_data(as_text=True)
     assert "DAL" not in bob_html, "week-2 pick leaked to another member before lock"
+    # Week 1's game is in the past, so both members' week-1 picks are locked
+    # and Bob sees them -- the "past game -> revealed" half of the rule.
+    assert "KC" in bob_html
+    assert "BUF" in bob_html
     # Expand toggle must use a SINGLE-quoted onclick so the tojson'd (double-quoted)
     # entry id doesn't terminate the attribute and break the click handler.
     assert "onclick='toggleSbDetail(" in bob_html
@@ -738,6 +742,112 @@ def test_survivor_board_hides_other_members_early_week_pick_before_lock(mock_sb,
     assert resp.status_code == 200
     alice_html = resp.get_data(as_text=True)
     assert "DAL" in alice_html
+
+
+@patch("routes.survivor.get_service_client")
+def test_early_game_pick_reveals_while_same_week_sunday_pick_stays_hidden(mock_sb, authed_client):
+    """Per-pick reveal, the core of the rule: within ONE week, a pick whose game
+    has already kicked off (an early Thu/Fri/Sat game) is revealed to other
+    members, while a pick in a later game that same week (a Sunday game that
+    hasn't reached the 1 PM lock anchor) stays hidden. A third-party viewer
+    (test-uuid, no entry here) sees the early-game team but not the Sunday one."""
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},   # early game
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF"},  # early game opp
+        {"id": "team-C", "ext_id": "ext-C", "abbreviation": "DAL"},  # sunday game
+        {"id": "team-D", "ext_id": "ext-D", "abbreviation": "PHI"},  # sunday game opp
+    ]
+    tables["pool_members"] = [
+        {"id": "m1", "pool_id": "pool-1", "user_id": "alice-uuid"},
+        {"id": "m2", "pool_id": "pool-1", "user_id": "bob-uuid"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "alice-uuid", "users": {"display_name": "Alice"}}},
+        {"id": "e2", "pool_id": "pool-1", "member_id": "m2", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "bob-uuid", "users": {"display_name": "Bob"}}},
+    ]
+    tables["survivor_picks"] = [
+        # Same week: Alice picked the early (already-kicked-off) game, Bob the Sunday game.
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "espn_game_id": "g-early", "result": None, "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-C", "espn_game_id": "g-sun", "result": None, "set_by": "member"},
+    ]
+    tables["game_results"] = [
+        # Early game kicked off in the past -> Alice's pick is locked/revealed.
+        {"espn_game_id": "g-early", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2020-01-02T18:00:00+00:00",  # a Thursday, long past
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+        # Sunday game of the SAME week is far in the future -> Bob's pick stays hidden.
+        {"espn_game_id": "g-sun", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2099-01-04T18:00:00+00:00",  # a Sunday, far future
+         "home_team_id": "ext-C", "away_team_id": "ext-D"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    # A third-party viewer with no entry in this pool.
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "test-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "KC" in html, "early-game pick should reveal once its game kicks off"
+    assert "DAL" not in html, "same-week Sunday pick must stay hidden until the Sunday anchor"
+    assert "\U0001f512" in html  # 🔒 for Bob's still-hidden Sunday pick
+
+
+@patch("routes.survivor.get_service_client")
+def test_wednesday_opener_pick_reveals_at_kickoff(mock_sb, authed_client):
+    """Tonight's real shape: a week whose earliest game is on WEDNESDAY, plus a
+    normal Sunday slate. A pick in the Wednesday game reveals the moment it
+    kicks off; a Sunday pick in the same week stays hidden until the Sunday
+    anchor. Guards the 'shit gets weird / early-week games' case explicitly."""
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},   # wednesday game
+        {"id": "team-B", "ext_id": "ext-B", "abbreviation": "BUF"},  # wednesday opp
+        {"id": "team-C", "ext_id": "ext-C", "abbreviation": "DAL"},  # sunday game
+        {"id": "team-D", "ext_id": "ext-D", "abbreviation": "PHI"},  # sunday opp
+    ]
+    tables["pool_members"] = [
+        {"id": "m1", "pool_id": "pool-1", "user_id": "alice-uuid"},
+        {"id": "m2", "pool_id": "pool-1", "user_id": "bob-uuid"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "alice-uuid", "users": {"display_name": "Alice"}}},
+        {"id": "e2", "pool_id": "pool-1", "member_id": "m2", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "bob-uuid", "users": {"display_name": "Bob"}}},
+    ]
+    tables["survivor_picks"] = [
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "espn_game_id": "g-wed", "result": None, "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-C", "espn_game_id": "g-sun", "result": None, "set_by": "member"},
+    ]
+    tables["game_results"] = [
+        # Wednesday game, already kicked off (a real past Wednesday).
+        {"espn_game_id": "g-wed", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2020-01-01T20:15:00-05:00",  # Wed Jan 1 2020, 8:15 PM ET
+         "home_team_id": "ext-A", "away_team_id": "ext-B"},
+        # Sunday game of the same week, far in the future.
+        {"espn_game_id": "g-sun", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2099-01-04T13:00:00-05:00",  # Sun, far future
+         "home_team_id": "ext-C", "away_team_id": "ext-D"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "test-uuid"  # third-party viewer, no entry
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "KC" in html, "Wednesday-game pick should reveal once the Wednesday game kicks off"
+    assert "DAL" not in html, "same-week Sunday pick must stay hidden until the Sunday anchor"
 
 
 @patch("routes.survivor.get_service_client")
@@ -1036,11 +1146,11 @@ def test_survivor_board_expand_detail_hides_other_members_unlocked_pick(mock_sb,
          "pool_members": {"user_id": "bob-uuid", "users": {"display_name": "Bob"}}},
     ]
     tables["survivor_picks"] = [
-        # Week 1 -- fully graded, safely in the past.
-        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "result": "win", "set_by": "member"},
-        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "result": "loss", "set_by": "member"},
-        # Week 2 -- only Alice has picked, and week 2 hasn't locked yet.
-        {"id": "p3", "entry_id": "e1", "week": 2, "team_ref": "team-C", "result": None, "set_by": "member"},
+        # Week 1 -- fully graded, safely in the past (game g1).
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "espn_game_id": "g1", "result": "win", "set_by": "member"},
+        {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "espn_game_id": "g1", "result": "loss", "set_by": "member"},
+        # Week 2 -- only Alice has picked, and week 2's game (g2) hasn't locked yet.
+        {"id": "p3", "entry_id": "e1", "week": 2, "team_ref": "team-C", "espn_game_id": "g2", "result": None, "set_by": "member"},
     ]
     tables["game_results"] = [
         {"espn_game_id": "g1", "competition_id": "c1", "week": 1,

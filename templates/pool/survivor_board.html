@@ -66,19 +66,20 @@
                     {% set pick = board.picks.get(entry.id, {}).get(w) %}
                     {% set bb = entry.buybacks | selectattr('week', 'equalto', w) | first %}
                     {% set is_own_entry = viewer_entry_id and entry.id == viewer_entry_id %}
-                    {% if not week_locked.get(w, False) and not is_own_entry %}
-                      {% if pick %}
+                    {# A pick reveals per-pick, the moment its own game locks (see
+                       pick.revealed); the buyback ↩ marker reveals at the week's
+                       Sunday anchor. You always see your own entry. #}
+                    {% set pick_shown = pick and (is_own_entry or pick.revealed) %}
+                    {% set bb_shown = bb and (is_own_entry or week_locked.get(w, False)) %}
+                    {% if pick and not pick_shown %}
                     <td class="sb-cell sb-locked" title="Pick made — hidden until lock">🔒</td>
-                      {% else %}
-                    <td class="sb-cell sb-none" title="No pick yet">○</td>
-                      {% endif %}
-                    {% elif pick %}
+                    {% elif pick_shown %}
                     <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
                         {{ team_abbrs.get(pick.team_ref, pick.team_ref) }}
                         {% if pick.set_by == 'commissioner' %}<sup class="sb-commish" title="Set by commissioner">C</sup>{% endif %}
                         {% if bb %}<sup class="sb-buyback" title="Buyback">↩</sup>{% endif %}
                     </td>
-                    {% elif bb %}
+                    {% elif bb_shown %}
                     <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-buyback-cell" title="Buyback">↩</td>
                     {% else %}
                     <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-none" title="No pick yet">○</td>
@@ -99,20 +100,18 @@
                             {% set pick = board.picks.get(entry.id, {}).get(w) %}
                             {% set bb = entry.buybacks | selectattr('week', 'equalto', w) | first %}
                             {% set is_own_entry = viewer_entry_id and entry.id == viewer_entry_id %}
+                            {% set pick_shown = pick and (is_own_entry or pick.revealed) %}
+                            {% set bb_shown = bb and (is_own_entry or week_locked.get(w, False)) %}
                             <div class="sb-detail-week">
                                 <div class="sb-detail-week-label">W{{ w }}</div>
                                 {# Same reveal rule as the grid cell above: another
-                                   member's pick for a not-yet-locked week is NEVER
-                                   rendered here -- no logo, no abbreviation -- until
-                                   week_locked[w] flips true, or unless this is the
-                                   viewer's own entry. #}
-                                {% if not week_locked.get(w, False) and not is_own_entry %}
-                                  {% if pick %}
+                                   member's pick is NEVER rendered here -- no logo, no
+                                   abbreviation -- until that pick's own game locks
+                                   (pick.revealed), or unless this is the viewer's own
+                                   entry. #}
+                                {% if pick and not pick_shown %}
                                 <div class="sb-detail-team sb-locked" title="Pick made — hidden until lock">🔒</div>
-                                  {% else %}
-                                <div class="sb-detail-team sb-none" title="No pick yet">○</div>
-                                  {% endif %}
-                                {% elif pick %}
+                                {% elif pick_shown %}
                                 <div class="sb-detail-team sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
                                     {% set logo = team_logos.get(pick.team_ref) %}
                                     {% if logo %}<img class="sb-detail-logo" src="{{ logo }}" alt="{{ team_abbrs.get(pick.team_ref, pick.team_ref) }}" onerror="this.style.display='none'">{% endif %}
@@ -120,7 +119,7 @@
                                     {% if pick.set_by == 'commissioner' %}<sup class="sb-commish" title="Set by commissioner">C</sup>{% endif %}
                                     {% if bb %}<sup class="sb-buyback" title="Buyback">↩</sup>{% endif %}
                                 </div>
-                                {% elif bb %}
+                                {% elif bb_shown %}
                                 <div class="sb-detail-team sb-buyback-cell" title="Buyback">↩</div>
                                 {% else %}
                                 <div class="sb-detail-team sb-none" title="No pick yet">○</div>
