@@ -506,6 +506,19 @@ def survivor_board(pool_id):
         # non-survivor pool. Bail out before any of that runs.
         return redirect(f"/pool/{pool_id}")
 
+    # Self-heal on view: pull an ESPN sync + re-resolve completed weeks
+    # whenever the board is opened, so eliminations appear without waiting on
+    # the daily cron (Hobby crons are best-effort). Shares the scores page's
+    # process-level 120s throttle -- most loads are no-ops, and the first hit
+    # after a game finishes grades the week. resolve_and_apply is idempotent;
+    # wrapped so any sync hiccup can never break the board render. (Lazy import
+    # to avoid a routes<->routes import cycle.)
+    try:
+        from routes.scores import maybe_auto_sync
+        maybe_auto_sync()
+    except Exception:
+        pass
+
     # Belt-and-suspenders: guarantee every pool_member has a survivor_entry
     # before board_data reads survivor_entries, regardless of how the member
     # was added (see _backfill_missing_entries docstring).

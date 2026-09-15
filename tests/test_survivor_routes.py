@@ -799,6 +799,27 @@ def test_early_game_pick_reveals_while_same_week_sunday_pick_stays_hidden(mock_s
     assert "\U0001f512" in html  # 🔒 for Bob's still-hidden Sunday pick
 
 
+@patch("routes.scores.maybe_auto_sync")
+@patch("routes.survivor.get_service_client")
+def test_board_load_triggers_self_heal_sync(mock_sb, mock_sync, authed_client):
+    """Opening the survivor board runs the throttled ESPN sync + re-resolve
+    (self-heal), so completed weeks get graded on view without waiting on the
+    daily cron. maybe_auto_sync is patched so no real ESPN call happens."""
+    tables = _base_tables()
+    tables["pool_members"] = [{"id": "m1", "pool_id": "pool-1", "user_id": "u1"}]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "u1", "users": {"display_name": "Alice"}}},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    assert mock_sync.called, "board load should trigger the self-heal sync"
+
+
 @patch("routes.survivor.get_service_client")
 def test_board_header_shows_schedule_current_week_not_picks_plus_one(mock_sb, authed_client):
     """Header/current-week comes from the schedule (earliest week with an
