@@ -559,7 +559,8 @@ def test_resolve_now_eliminates_loser_and_grades_winner(mock_sb, authed_client):
         {"id": "p-lose", "entry_id": "e-lose", "week": 1, "team_ref": "team-B", "espn_game_id": "g1"},
     ]
     tables["game_results"] = [
-        {"espn_game_id": "g1", "week": 1, "home_team_id": "ext-A", "away_team_id": "ext-B",
+        {"espn_game_id": "g1", "competition_id": "c1", "week": 1,
+         "home_team_id": "ext-A", "away_team_id": "ext-B",
          "home_score": 24, "away_score": 10, "winner_team_id": "ext-A", "is_complete": True},
     ]
     sb = FakeSb(tables)

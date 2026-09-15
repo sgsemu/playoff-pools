@@ -414,6 +414,90 @@ def fetch_competition_results(competition, dates=None):
     return out
 
 
+import re as _re
+
+_CORE_NFL = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl"
+_CORE_TEAM_ID_RE = _re.compile(r"/teams/(\d+)")
+
+
+def _core_https(ref):
+    return (ref or "").replace("http://", "https://")
+
+
+def _core_team_id(competitor):
+    ref = (competitor.get("team") or {}).get("$ref", "")
+    m = _CORE_TEAM_ID_RE.search(ref)
+    return int(m.group(1)) if m else None
+
+
+def fetch_nfl_week_results_core(season, week):
+    """Results for one NFL week via ESPN's CORE api (sports.core.api.espn.com),
+    which stays reachable when site.api is IP-blocked (403 from datacenters like
+    Vercel) -- the same endpoint scripts/load_nfl_schedule.py uses. Returns a
+    list of game dicts (espn_game_id, home/away team id, scores, winner_team_id,
+    is_draw, is_complete) matching the fields sync writes. Only completed games
+    carry real scores/winner; scheduled games come back is_complete=False."""
+    hdrs = {"User-Agent": "Mozilla/5.0"}
+    idx = requests.get(
+        f"{_CORE_NFL}/seasons/{season}/types/2/weeks/{week}/events?limit=100",
+        headers=hdrs, timeout=20,
+    )
+    idx.raise_for_status()
+    out = []
+    for item in idx.json().get("items", []):
+        ref = item.get("$ref")
+        if not ref:
+            continue
+        ev = requests.get(_core_https(ref), headers=hdrs, timeout=20).json()
+        comp = (ev.get("competitions") or [{}])[0]
+        competitors = comp.get("competitors") or []
+        home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+        away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+        if not home or not away:
+            continue
+        hid, aid = _core_team_id(home), _core_team_id(away)
+        if hid is None or aid is None:
+            continue
+        completed = False
+        status_ref = (comp.get("status") or {}).get("$ref")
+        if status_ref:
+            try:
+                st = requests.get(_core_https(status_ref), headers=hdrs, timeout=20).json()
+                completed = bool((st.get("type") or {}).get("completed"))
+            except Exception:
+                completed = False
+
+        def _score(c):
+            sref = (c.get("score") or {}).get("$ref")
+            if not sref:
+                return 0
+            try:
+                return int(requests.get(_core_https(sref), headers=hdrs, timeout=20).json().get("value", 0))
+            except Exception:
+                return 0
+
+        home_score = _score(home) if completed else 0
+        away_score = _score(away) if completed else 0
+        winner_id = None
+        if completed:
+            if home.get("winner"):
+                winner_id = hid
+            elif away.get("winner"):
+                winner_id = aid
+        is_draw = completed and winner_id is None and home_score == away_score
+        out.append({
+            "espn_game_id": str(ev["id"]),
+            "home_team_id": hid,
+            "away_team_id": aid,
+            "home_score": home_score,
+            "away_score": away_score,
+            "winner_team_id": winner_id,
+            "is_draw": is_draw,
+            "is_complete": completed,
+        })
+    return out
+
+
 def fetch_group_winners(competition):
     """Group winners (ext_ids ranked 1st in a *completed* group). Cached ~5 min."""
     key = ("group_winners", competition.get("id") or competition.get("espn_slug"))

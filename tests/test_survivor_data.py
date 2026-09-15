@@ -417,6 +417,50 @@ def test_resolve_and_apply_final_week_applies_win_and_loss():
     assert picks_by_entry["e2"]["result"] == "loss"
 
 
+def test_resolve_and_apply_does_not_eliminate_on_unplayed_future_week():
+    """Regression: a scheduled-but-unplayed week (games present, none complete)
+    must NOT eliminate anyone -- even entries with no pick for it. Without the
+    completeness gate, resolve_week scores every no-pick entry a loss and, since
+    a week nobody has picked has no *pending* pick to trigger the whole-week
+    defer, the entire pool gets eliminated on a week that hasn't happened."""
+    sb = FakeSb({
+        "pool_competitions": [{"pool_id": "pool1", "competition_id": "comp1"}],
+        "teams": [
+            {"id": "team-A", "competition_id": "comp1", "ext_id": "T-A"},
+            {"id": "team-B", "competition_id": "comp1", "ext_id": "T-B"},
+        ],
+        "game_results": [
+            # Week 1 fully played: team-A beats team-B.
+            {"espn_game_id": "g1", "week": 1, "competition_id": "comp1",
+             "home_team_id": "T-A", "away_team_id": "T-B",
+             "home_score": 20, "away_score": 10, "is_complete": True},
+            # Week 2 scheduled but NOT played -- nobody has picked it yet.
+            {"espn_game_id": "g2", "week": 2, "competition_id": "comp1",
+             "home_team_id": "T-A", "away_team_id": "T-B",
+             "home_score": 0, "away_score": 0, "is_complete": False},
+        ],
+        "survivor_entries": [
+            {"id": "e1", "pool_id": "pool1", "member_id": "m1", "status": "active", "eliminated_week": None},
+            {"id": "e2", "pool_id": "pool1", "member_id": "m2", "status": "active", "eliminated_week": None},
+        ],
+        "survivor_picks": [
+            {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "espn_game_id": "g1", "result": "pending"},
+            {"id": "p2", "entry_id": "e2", "week": 1, "team_ref": "team-B", "espn_game_id": "g1", "result": "pending"},
+        ],
+    })
+    pool = {"id": "pool1", "survivor_config": {}}
+
+    resolve_and_apply(sb, pool)
+
+    entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
+    # Week 1 graded normally: winner stays active, loser out for week 1.
+    assert entries_by_id["e1"]["status"] == "active"
+    assert entries_by_id["e2"]["status"] == "eliminated"
+    assert entries_by_id["e2"]["eliminated_week"] == 1
+    # The unplayed week 2 must NOT have eliminated the week-1 winner for "no pick".
+    assert entries_by_id["e1"]["eliminated_week"] is None
+
+
 def test_resolve_and_apply_is_idempotent_on_second_call():
     # resolve_week only grades entries still "active", so an entry eliminated
     # on the first call correctly drops out of the second call's resolution
@@ -561,8 +605,9 @@ def test_incomplete_game_defers_week_entry_stays_pending():
 
     result = resolve_and_apply(sb, pool)
 
-    assert result[5]["e1"]["result"] == "pending"
-    assert result[5]["e1"]["status"] == "active"
+    # An incomplete week is a full no-op now (the completeness gate defers it
+    # before grading), so its resolution is empty and nothing is written.
+    assert result[5] == {}
 
     entries_by_id = {r["id"]: r for r in sb.tables["survivor_entries"]}
     assert entries_by_id["e1"]["status"] == "active"

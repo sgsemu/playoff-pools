@@ -65,6 +65,13 @@ class _Query:
                 self.store.rows.append(row)
             self.store.upserts.append(row)
             return _Result([row])
+        if self.verb == "update":
+            rows = self.store.rows
+            for col, val in self.filters:
+                rows = [r for r in rows if r.get(col) == val]
+            for r in rows:
+                r.update(self.payload)
+            return _Result(rows)
         raise AssertionError(f"unhandled verb {self.verb}")
 
 
@@ -78,6 +85,9 @@ class _GameResultsStore:
 
     def upsert(self, row, on_conflict=None):
         return _Query(self, "upsert", payload=row, on_conflict=on_conflict)
+
+    def update(self, row):
+        return _Query(self, "update", payload=row)
 
 
 def _sb_with_game_results(rows=None):
@@ -94,6 +104,42 @@ def _sb_with_game_results(rows=None):
 
 _COMP = {"id": "c-wc", "league": "world_cup", "espn_sport": "soccer",
          "espn_slug": "fifa.world", "event_filter": {}}
+
+
+_NFL_COMP = {"id": "c-nfl", "league": "nfl", "espn_sport": "football",
+             "espn_slug": "nfl", "season": 2026, "event_filter": {"season_type": 2}}
+
+
+@patch("services.sync.fetch_nfl_week_results_core")
+@patch("services.sync.fetch_competition_results")
+def test_nfl_sync_uses_core_api_and_marks_stale_week_complete(mock_site, mock_core):
+    # Two week-1 games with past kickoffs, not yet complete (site.api is
+    # 403-blocked for NFL, so they were stuck). A future week-2 game must NOT
+    # trigger a fetch. The core fetcher returns week 1 as finished.
+    sb, store = _sb_with_game_results([
+        {"espn_game_id": "g1", "competition_id": "c-nfl", "week": 1,
+         "is_complete": False, "kickoff_at": "2020-09-13T17:00:00+00:00"},
+        {"espn_game_id": "g2", "competition_id": "c-nfl", "week": 1,
+         "is_complete": False, "kickoff_at": "2020-09-13T17:00:00+00:00"},
+        {"espn_game_id": "g3", "competition_id": "c-nfl", "week": 2,
+         "is_complete": False, "kickoff_at": "2099-09-20T17:00:00+00:00"},
+    ])
+    mock_core.return_value = [
+        {"espn_game_id": "g1", "home_team_id": 26, "away_team_id": 17,
+         "home_score": 20, "away_score": 10, "winner_team_id": 26, "is_draw": False, "is_complete": True},
+        {"espn_game_id": "g2", "home_team_id": 8, "away_team_id": 18,
+         "home_score": 14, "away_score": 21, "winner_team_id": 18, "is_draw": False, "is_complete": True},
+    ]
+
+    n = sync_competition_results(sb, _NFL_COMP)
+
+    assert not mock_site.called, "NFL must not hit the 403-blocked site.api path"
+    mock_core.assert_called_once_with(2026, 1)  # only the stale (past) week
+    assert n == 2
+    by_id = {r["espn_game_id"]: r for r in store.rows}
+    assert by_id["g1"]["is_complete"] is True and by_id["g1"]["winner_team_id"] == 26
+    assert by_id["g2"]["is_complete"] is True and by_id["g2"]["away_score"] == 21
+    assert by_id["g3"]["is_complete"] is False  # future week untouched
 
 
 @patch("services.sync.fetch_competition_results")

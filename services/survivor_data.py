@@ -180,6 +180,20 @@ def resolve_week_for_pool(sb, pool, week):
     config = pool.get("survivor_config") or {}
     mercy_after_week = config.get("mercy_after_week", 7)
 
+    # Completeness gate: only grade a week that has actually been PLAYED to
+    # completion. If the week has no games, or any scheduled game is still not
+    # complete, defer the whole week and change nothing. Without this, a future
+    # or in-progress week that nobody has picked yet gets every entry scored as
+    # a no_pick loss and the entire pool eliminated -- resolve_week's own
+    # whole-week defer only fires on a *pending pick*, so a week with zero picks
+    # slips straight through to mass elimination. Idempotent no-op when deferred.
+    comp_ids = get_pool_competition_ids(sb, pool_id)
+    week_games = sb.table("game_results").select("is_complete").in_(
+        "competition_id", comp_ids
+    ).eq("week", week).execute().data if comp_ids else []
+    if not week_games or any(not g.get("is_complete") for g in week_games):
+        return {}
+
     entries = sb.table("survivor_entries").select("*").eq("pool_id", pool_id).execute().data
     entry_ids = [e["id"] for e in entries]
 
