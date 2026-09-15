@@ -800,6 +800,47 @@ def test_early_game_pick_reveals_while_same_week_sunday_pick_stays_hidden(mock_s
 
 
 @patch("routes.survivor.get_service_client")
+def test_board_header_shows_schedule_current_week_not_picks_plus_one(mock_sb, authed_client):
+    """Header/current-week comes from the schedule (earliest week with an
+    unlocked game), not max(weeks_with_picks)+1. Week 1 is fully locked (past)
+    and week 2 is upcoming, and picks exist for BOTH weeks -- the old
+    max(picks)+1 logic would label this 'Week 3', the schedule says 'Week 2'."""
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "KC"},
+        {"id": "team-C", "ext_id": "ext-C", "abbreviation": "DAL"},
+    ]
+    tables["pool_members"] = [
+        {"id": "m1", "pool_id": "pool-1", "user_id": "alice-uuid"},
+    ]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None,
+         "pool_members": {"user_id": "alice-uuid", "users": {"display_name": "Alice"}}},
+    ]
+    tables["survivor_picks"] = [
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "espn_game_id": "g1", "result": "win", "set_by": "member"},
+        {"id": "p2", "entry_id": "e1", "week": 2, "team_ref": "team-C", "espn_game_id": "g2", "result": None, "set_by": "member"},
+    ]
+    tables["game_results"] = [
+        {"espn_game_id": "g1", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2020-01-05T18:00:00+00:00", "home_team_id": "ext-A", "away_team_id": "ext-B"},
+        {"espn_game_id": "g2", "competition_id": "c1", "week": 2,
+         "kickoff_at": "2099-01-04T18:00:00+00:00", "home_team_id": "ext-C", "away_team_id": "ext-D"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "alice-uuid"
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Week 2 picks" in html
+    assert "Week 3 picks" not in html
+
+
+@patch("routes.survivor.get_service_client")
 def test_wednesday_opener_pick_reveals_at_kickoff(mock_sb, authed_client):
     """Tonight's real shape: a week whose earliest game is on WEDNESDAY, plus a
     normal Sunday slate. A pick in the Wednesday game reveals the moment it

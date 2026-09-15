@@ -512,15 +512,19 @@ def survivor_board(pool_id):
     _backfill_missing_entries(sb, pool_id)
 
     data = board_data(sb, pool_id)
-    # Display-only default for the header and the range of week columns
-    # shown: the week after the last one anyone has picked yet. This must
-    # NEVER gate which picks are hidden -- weeks_with_picks grows the
-    # instant anyone submits a pick, so using it for hiding would flip an
-    # early week from "current/hidden" to "past/revealed" the moment one
-    # member picks early, leaking that pick to every other member days
-    # before the week actually locks. See week_locked below for the real
-    # per-week hiding rule.
-    current_week = (max(data["weeks"]) + 1) if data["weeks"] else 1
+    comp_ids = get_pool_competition_ids(sb, pool_id)
+    # Display-only value for the header and the range of week columns shown:
+    # the TRUE current week (earliest week with a still-unlocked game), from
+    # the game schedule via _resolve_current_week -- NOT max(weeks_with_picks)
+    # + 1, which overshoots by one the moment anyone submits a pick for the
+    # current week (so week 2 rendered as "week 3"). Take the max with any week
+    # that already has picks so a picked column is never hidden, and fall back
+    # to the picks-derived guess only when there's no game data at all. This is
+    # display-only -- it must NEVER gate which picks are hidden (that is the
+    # per-pick reveal below), so an early pick can't flip a week's visibility.
+    current_week = _resolve_current_week(sb, comp_ids) or 1
+    if data["weeks"]:
+        current_week = max(current_week, max(data["weeks"]))
 
     # Team abbreviations for every team_ref referenced by any pick, resolved
     # in one batched read here (not per-cell in the template) so board_data's
@@ -544,7 +548,6 @@ def survivor_board(pool_id):
     # Reuses the teams already fetched above for team_abbrs -- no extra
     # per-team query.
     league = "nfl"
-    comp_ids = get_pool_competition_ids(sb, pool_id)
     if comp_ids:
         comp_rows = sb.table("competitions").select("league").in_(
             "id", comp_ids

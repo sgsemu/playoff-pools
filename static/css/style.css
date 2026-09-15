@@ -798,6 +798,8 @@ a.best-line-book:hover { background: #353550; }
 .sb-loss { background: rgba(248, 113, 113, 0.18); color: #f87171; text-decoration: line-through; }
 .sb-pending { background: rgba(250, 204, 21, 0.12); color: #facc15; font-style: italic; }
 .sb-none { color: #555; }
+.sb-cell-logo { width: 22px; height: 22px; object-fit: contain; vertical-align: middle; }
+.sb-loss .sb-cell-logo { opacity: 0.5; filter: grayscale(1); }
 .sb-locked {
     color: #888; font-style: italic;
     background: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(136, 136, 136, 0.08) 4px, rgba(136, 136, 136, 0.08) 8px);

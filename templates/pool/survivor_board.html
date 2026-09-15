@@ -76,7 +76,9 @@
                     <td class="sb-cell sb-locked" title="Pick made — hidden until lock">🔒</td>
                     {% elif pick_shown %}
                     <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
-                        {{ team_abbrs.get(pick.team_ref, pick.team_ref) }}
+                        {% set logo = team_logos.get(pick.team_ref) %}
+                        {% set abbr = team_abbrs.get(pick.team_ref, pick.team_ref) %}
+                        {% if logo %}<img class="sb-cell-logo" src="{{ logo }}" alt="{{ abbr }}" title="{{ abbr }}" onerror="this.replaceWith(document.createTextNode(this.alt))">{% else %}{{ abbr }}{% endif %}
                         {% if pick.set_by == 'commissioner' %}<sup class="sb-commish" title="Set by commissioner">C</sup>{% endif %}
                         {% if bb %}<sup class="sb-buyback" title="Buyback">↩</sup>{% endif %}
                     </td>
