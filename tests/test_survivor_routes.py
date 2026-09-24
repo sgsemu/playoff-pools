@@ -271,6 +271,50 @@ def test_buyback_by_eliminated_entry_returns_200(mock_sb, authed_client):
     assert sb.tables["survivor_entries"][0]["status"] == "active"
 
 
+@patch("routes.survivor.get_service_client")
+def test_buyback_into_losing_week_rejected(mock_sb, authed_client):
+    """Footgun guard: an entry eliminated in week 2 cannot buy back INTO week 2
+    (or earlier). active_from_week would be set to the losing week, so the
+    resolver re-grades the loss and eliminates them right back. Must 400 and
+    write no buyback."""
+    tables = _base_tables(survivor_config={
+        "regular_buyback": {"weeks": [1, 6], "fee": 100},
+    })
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "eliminated",
+         "eliminated_week": 2},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/buyback", json={"week": 2})
+    assert resp.status_code == 400
+    assert "week 3 or later" in resp.get_json()["error"]
+    assert sb.tables["survivor_buybacks"] == []
+    assert sb.tables["survivor_entries"][0]["status"] == "eliminated"
+
+
+@patch("routes.survivor.get_service_client")
+def test_buyback_for_into_losing_week_rejected(mock_sb, authed_client):
+    """Same guard on the commissioner buyback-for route."""
+    tables = _base_tables(creator_id="test-uuid")
+    tables["pool_members"].append(
+        {"id": "m-target", "pool_id": "pool-1", "user_id": "member-uuid"}
+    )
+    tables["survivor_entries"] = [
+        {"id": "e-target", "pool_id": "pool-1", "member_id": "m-target",
+         "status": "eliminated", "eliminated_week": 1},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    resp = authed_client.post("/pool/pool-1/survivor/buyback-for",
+                              json={"member_id": "m-target", "week": 1, "kind": "regular"})
+    assert resp.status_code == 400
+    assert "week 2 or later" in resp.get_json()["error"]
+    assert sb.tables["survivor_buybacks"] == []
+
+
 # ---------------------------------------------------------------------------
 # pick: team_ref not one of the espn_game_id game's two teams -> 400
 # ---------------------------------------------------------------------------
@@ -798,6 +842,47 @@ def test_early_game_pick_reveals_while_same_week_sunday_pick_stays_hidden(mock_s
     assert "KC" in html, "early-game pick should reveal once its game kicks off"
     assert "DAL" not in html, "same-week Sunday pick must stay hidden until the Sunday anchor"
     assert "\U0001f512" in html  # 🔒 for Bob's still-hidden Sunday pick
+
+
+@patch("routes.survivor.get_service_client")
+def test_pre_buyback_week_renders_as_loss_not_pending(mock_sb, authed_client):
+    """A bought-back entry's pre-buyback week (week < active_from_week) is the
+    week they lost; the resolver skips grading it so its result stays 'pending',
+    but the board should render it as a loss, not a stale yellow 'pending'."""
+    tables = _base_tables()
+    tables["teams"] = [
+        {"id": "team-A", "ext_id": "ext-A", "abbreviation": "LAC"},
+        {"id": "team-C", "ext_id": "ext-C", "abbreviation": "SF"},
+    ]
+    tables["pool_members"] = [{"id": "m1", "pool_id": "pool-1", "user_id": "alice-uuid"}]
+    tables["survivor_entries"] = [
+        {"id": "e1", "pool_id": "pool-1", "member_id": "m1", "status": "active",
+         "eliminated_week": None, "active_from_week": 2,
+         "pool_members": {"user_id": "alice-uuid", "users": {"display_name": "Alice"}}},
+    ]
+    tables["survivor_picks"] = [
+        # Week 1 pick, never graded (skipped by active_from_week=2) -> still 'pending'.
+        {"id": "p1", "entry_id": "e1", "week": 1, "team_ref": "team-A", "espn_game_id": "g1", "result": "pending"},
+        {"id": "p2", "entry_id": "e1", "week": 2, "team_ref": "team-C", "espn_game_id": "g2", "result": "win"},
+    ]
+    tables["game_results"] = [
+        {"espn_game_id": "g1", "competition_id": "c1", "week": 1,
+         "kickoff_at": "2020-01-05T18:00:00+00:00", "home_team_id": "ext-A", "away_team_id": "ext-B"},
+        {"espn_game_id": "g2", "competition_id": "c1", "week": 2,
+         "kickoff_at": "2020-01-12T18:00:00+00:00", "home_team_id": "ext-C", "away_team_id": "ext-D"},
+    ]
+    sb = FakeSb(tables)
+    mock_sb.return_value = sb
+
+    with authed_client.session_transaction() as sess:
+        sess["user_id"] = "alice-uuid"  # own entry -> pick shown
+    resp = authed_client.get("/pool/pool-1/survivor")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    # The week-1 (pre-buyback) LAC cell must render as a loss, and nothing on the
+    # board should render as 'pending' (the skipped week is no longer yellow).
+    assert "sb-loss" in html
+    assert "sb-pending" not in html
 
 
 @patch("routes.scores.maybe_auto_sync")

@@ -72,10 +72,16 @@
                        Sunday anchor. You always see your own entry. #}
                     {% set pick_shown = pick and (is_own_entry or pick.revealed) %}
                     {% set bb_shown = bb and (is_own_entry or week_locked.get(w, False)) %}
+                    {# A pick in a week BEFORE this entry's active_from_week is a
+                       pre-buyback week they lost (that's why they bought back past
+                       it); the resolver skips grading it so its result stays
+                       'pending', but it should read as the loss it was, not a
+                       stale yellow 'pending'. #}
+                    {% set eff_result = 'loss' if (pick and entry.active_from_week and w < entry.active_from_week) else (pick.result if pick else None) %}
                     {% if pick and not pick_shown %}
                     <td class="sb-cell sb-locked" title="Pick made — hidden until lock">🔒</td>
                     {% elif pick_shown %}
-                    <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
+                    <td {% if is_own_entry %}id="sb-own-w{{ w }}" {% endif %}class="sb-cell sb-{{ 'win' if eff_result in ('win', 'tie') else ('loss' if eff_result == 'loss' else 'pending') }}">
                         {% set logo = team_logos.get(pick.team_ref) %}
                         {% set abbr = team_abbrs.get(pick.team_ref, pick.team_ref) %}
                         {% if logo %}<img class="sb-cell-logo" src="{{ logo }}" alt="{{ abbr }}" title="{{ abbr }}" onerror="this.replaceWith(document.createTextNode(this.alt))">{% else %}{{ abbr }}{% endif %}
@@ -105,6 +111,7 @@
                             {% set is_own_entry = viewer_entry_id and entry.id == viewer_entry_id %}
                             {% set pick_shown = pick and (is_own_entry or pick.revealed) %}
                             {% set bb_shown = bb and (is_own_entry or week_locked.get(w, False)) %}
+                            {% set eff_result = 'loss' if (pick and entry.active_from_week and w < entry.active_from_week) else (pick.result if pick else None) %}
                             <div class="sb-detail-week">
                                 <div class="sb-detail-week-label">W{{ w }}</div>
                                 {# Same reveal rule as the grid cell above: another
@@ -115,7 +122,7 @@
                                 {% if pick and not pick_shown %}
                                 <div class="sb-detail-team sb-locked" title="Pick made — hidden until lock">🔒</div>
                                 {% elif pick_shown %}
-                                <div class="sb-detail-team sb-{{ 'win' if pick.result in ('win', 'tie') else ('loss' if pick.result == 'loss' else 'pending') }}">
+                                <div class="sb-detail-team sb-{{ 'win' if eff_result in ('win', 'tie') else ('loss' if eff_result == 'loss' else 'pending') }}">
                                     {% set logo = team_logos.get(pick.team_ref) %}
                                     {% if logo %}<img class="sb-detail-logo" src="{{ logo }}" alt="{{ team_abbrs.get(pick.team_ref, pick.team_ref) }}" onerror="this.style.display='none'">{% endif %}
                                     <span class="sb-detail-abbr">{{ team_abbrs.get(pick.team_ref, pick.team_ref) }}</span>

@@ -724,6 +724,14 @@ def submit_survivor_buyback(pool_id):
     if entry["status"] != "eliminated":
         return jsonify({"error": "not eliminated"}), 400
 
+    # A buyback re-enters you the week AFTER your loss -- it must be for a week
+    # LATER than the one you were eliminated in. Buying back into the losing
+    # week itself sets active_from_week to that week, so the resolver re-grades
+    # the loss and eliminates you right back. Reject it with a clear message.
+    elim_wk = entry.get("eliminated_week")
+    if elim_wk is not None and week <= elim_wk:
+        return jsonify({"error": f"Buy back into week {elim_wk + 1} or later — you were eliminated in week {elim_wk}."}), 400
+
     config = pool.get("survivor_config") or {}
     option = buyback_option(week, config)
     if not option or not option.get("kind"):
@@ -849,6 +857,12 @@ def record_buyback_for(pool_id):
         return jsonify({"error": "Member not in pool"}), 400
 
     entry = get_or_create_entry(sb, pool_id, member_id)
+    # Same guard as the self-serve route: re-enter the week AFTER the loss, not
+    # the losing week itself (which active_from_week would then re-grade and
+    # eliminate). This is the exact mistake that put week-1 losers back OUT.
+    elim_wk = entry.get("eliminated_week")
+    if elim_wk is not None and week <= elim_wk:
+        return jsonify({"error": f"Buy back into week {elim_wk + 1} or later — this player was eliminated in week {elim_wk}."}), 400
     try:
         buyback = record_buyback(sb, entry, week, kind, fee=fee)
     except Exception as exc:
