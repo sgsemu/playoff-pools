@@ -72,12 +72,11 @@
                        Sunday anchor. You always see your own entry. #}
                     {% set pick_shown = pick and (is_own_entry or pick.revealed) %}
                     {% set bb_shown = bb and (is_own_entry or week_locked.get(w, False)) %}
-                    {# A pick in a week BEFORE this entry's active_from_week is a
-                       pre-buyback week they lost (that's why they bought back past
-                       it); the resolver skips grading it so its result stays
-                       'pending', but it should read as the loss it was, not a
-                       stale yellow 'pending'. #}
-                    {% set eff_result = 'loss' if (pick and entry.active_from_week and w < entry.active_from_week) else (pick.result if pick else None) %}
+                    {# Color from the pick's OWN game outcome (display_result),
+                       set the moment that game finishes -- so a completed game
+                       reads win/loss even mid-week, and a skipped pre-buyback week
+                       reads its true result rather than a stale 'pending'. #}
+                    {% set eff_result = pick.display_result if pick else None %}
                     {% if pick and not pick_shown %}
                     <td class="sb-cell sb-locked" title="Pick made — hidden until lock">🔒</td>
                     {% elif pick_shown %}
@@ -111,7 +110,7 @@
                             {% set is_own_entry = viewer_entry_id and entry.id == viewer_entry_id %}
                             {% set pick_shown = pick and (is_own_entry or pick.revealed) %}
                             {% set bb_shown = bb and (is_own_entry or week_locked.get(w, False)) %}
-                            {% set eff_result = 'loss' if (pick and entry.active_from_week and w < entry.active_from_week) else (pick.result if pick else None) %}
+                            {% set eff_result = pick.display_result if pick else None %}
                             <div class="sb-detail-week">
                                 <div class="sb-detail-week-label">W{{ w }}</div>
                                 {# Same reveal rule as the grid cell above: another

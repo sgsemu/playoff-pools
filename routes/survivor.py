@@ -16,6 +16,7 @@ from services.competitions import (
     get_draftable_teams,
 )
 from services.survivor import ET, is_locked, pick_lock_at, buyback_option
+from services.scoring import match_outcomes
 from services.survivor_data import (
     get_or_create_entry,
     submit_pick,
@@ -128,7 +129,8 @@ def _week_lock_at(sb, pool_id, week):
 
 
 def _reveal_maps(sb, comp_ids):
-    """One batched read of the pool's games -> (kickoff_by_game, sunday_by_week).
+    """One batched read of the pool's games ->
+    (kickoff_by_game, sunday_by_week, games_by_espn_id).
 
     kickoff_by_game maps espn_game_id -> ET-aware kickoff datetime; sunday_by_week
     maps week -> that week's Sunday date (same rule as _week_sunday: a real Sunday
@@ -137,20 +139,29 @@ def _reveal_maps(sb, comp_ids):
     now >= pick_lock_at(its game's kickoff, its week's Sunday). Reusing the lock
     instant for reveal means an early-game pick (Thu/Fri/Sat) shows the moment that
     game kicks off, every Sunday/Monday pick stays hidden until the Sunday 1 PM
-    anchor, and a pick is never revealed while it can still be changed."""
+    anchor, and a pick is never revealed while it can still be changed.
+
+    games_by_espn_id maps espn_game_id -> the full game row (scores/winner/
+    is_complete), used to color each pick from its OWN game's outcome the moment
+    that game finishes -- independent of whole-week resolution, which only writes
+    pick.result once every game in the week is final."""
     kickoff_by_game = {}
     dates_by_week = {}
+    games_by_espn_id = {}
     if not comp_ids:
-        return kickoff_by_game, {}
+        return kickoff_by_game, {}, games_by_espn_id
     rows = sb.table("game_results").select(
-        "espn_game_id, week, kickoff_at"
+        "espn_game_id, week, kickoff_at, home_team_id, away_team_id, "
+        "home_score, away_score, winner_team_id, is_draw, is_complete"
     ).in_("competition_id", comp_ids).execute().data
     for r in rows:
+        gid = r.get("espn_game_id")
+        if gid:
+            games_by_espn_id[gid] = r
         dt = _parse_iso(r.get("kickoff_at"))
         if not dt:
             continue
         dt = dt.astimezone(ET)
-        gid = r.get("espn_game_id")
         if gid:
             kickoff_by_game[gid] = dt
         wk = r.get("week")
@@ -166,7 +177,7 @@ def _reveal_maps(sb, comp_ids):
         # back via _week_sunday), keeping reveal >= lock -- a pick is never
         # shown while it can still be changed.
         sunday_by_week[wk] = sunday or max(dates)
-    return kickoff_by_game, sunday_by_week
+    return kickoff_by_game, sunday_by_week, games_by_espn_id
 
 
 def _team_nickname(name):
@@ -581,7 +592,8 @@ def survivor_board(pool_id):
     # hidden rather than leaking early. Stamped onto each pick dict for the
     # template's `pick.revealed` gate.
     now = datetime.now(ET)
-    kickoff_by_game, sunday_by_week = _reveal_maps(sb, comp_ids)
+    kickoff_by_game, sunday_by_week, games_by_espn_id = _reveal_maps(sb, comp_ids)
+    ext_by_ref = {ref: team.get("ext_id") for ref, team in resolved_teams.items()}
     for entry_picks in data["picks"].values():
         for pick in entry_picks.values():
             kickoff = kickoff_by_game.get(pick.get("espn_game_id"))
@@ -589,6 +601,23 @@ def survivor_board(pool_id):
             pick["revealed"] = bool(
                 kickoff and wk_sunday and now >= pick_lock_at(kickoff, wk_sunday)
             )
+            # display_result colors the cell from the pick's OWN game the moment
+            # it finishes -- so a completed game shows win/loss even while the rest
+            # of the week is still being played (the whole-week resolver only
+            # writes pick.result once EVERY game is final). Falls back to the
+            # stored result when the game isn't complete yet. Elimination status
+            # still waits for full-week resolution (mercy needs every result).
+            game = games_by_espn_id.get(pick.get("espn_game_id"))
+            display = pick.get("result")
+            if game and game.get("is_complete"):
+                team_ext = ext_by_ref.get(pick.get("team_ref"))
+                for tid, outcome in match_outcomes(game):
+                    if str(tid) == str(team_ext):
+                        display = "tie" if outcome == "draw" else outcome
+                        break
+                else:
+                    display = "loss"  # picked team not in the game -> a loss
+            pick["display_result"] = display
 
     # Per-week reveal, still used for the buyback (↩) marker only -- it flags a
     # re-entry, not a team choice, so it reveals at the week's Sunday 1 PM anchor
